@@ -1,12 +1,12 @@
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 const questions = [
@@ -123,7 +123,12 @@ export default function DiagnosisScreen() {
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
     } else {
-      router.push('/result');
+      router.push({
+        pathname: '/result',
+        params: {
+          answers: JSON.stringify(answers),
+        },
+      });
     }
   };
 

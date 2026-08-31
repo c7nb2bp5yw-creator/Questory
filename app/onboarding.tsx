@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
+  Alert,
   Pressable,
   SafeAreaView,
   StyleSheet,
@@ -8,23 +9,74 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { supabase } from '../lib/supabase';
 
 export default function OnboardingScreen() {
   const [name, setName] = useState('');
   const [userId, setUserId] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleStart = () => {
-    if (!name.trim() || !userId.trim()) {
+  const handleStart = async () => {
+    if (!name.trim() || !userId.trim() || isLoading) {
       return;
     }
 
-    router.push('/diagnosis');
+    setIsLoading(true);
+    setError('');
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setError('ログイン情報を確認できませんでした。');
+      setIsLoading(false);
+      return;
+    }
+
+    const cleanUsername = userId.trim().replace(/^@/, '');
+
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert({
+        id: user.id,
+        name: name.trim(),
+        username: cleanUsername,
+        onboarding_completed: false,
+      });
+
+    if (profileError) {
+      console.log('PROFILE INSERT ERROR:', profileError);
+
+      if (profileError.code === '23505') {
+        setError('このUSER IDはすでに使われています。');
+      } else {
+        setError(`保存エラー: ${profileError.message}`);
+      }
+
+      setIsLoading(false);
+      return;
+    }
+
+    Alert.alert(
+      '保存成功',
+      'プロフィールをSupabaseに保存しました。',
+      [
+        {
+          text: 'OK',
+          onPress: () => router.push('/diagnosis'),
+        },
+      ]
+    );
+
+    setIsLoading(false);
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-
         <Text style={styles.logo}>
           QUESTORY
         </Text>
@@ -50,7 +102,6 @@ export default function OnboardingScreen() {
         </View>
 
         <View style={styles.form}>
-
           <Text style={styles.label}>
             NAME
           </Text>
@@ -78,24 +129,30 @@ export default function OnboardingScreen() {
             maxLength={20}
           />
 
+          {error ? (
+            <Text style={styles.error}>
+              {error}
+            </Text>
+          ) : null}
         </View>
 
         <Pressable
           style={[
             styles.button,
-            (!name.trim() || !userId.trim()) && styles.disabledButton,
+            (!name.trim() || !userId.trim() || isLoading) &&
+              styles.disabledButton,
           ]}
           onPress={handleStart}
+          disabled={isLoading}
         >
           <Text style={styles.buttonText}>
-            START
+            {isLoading ? 'SAVING...' : 'START'}
           </Text>
         </Pressable>
 
         <Text style={styles.footer}>
           YOUR ADVENTURE. YOUR STORY.
         </Text>
-
       </View>
     </SafeAreaView>
   );
@@ -177,6 +234,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 15,
     marginBottom: 20,
+  },
+
+  error: {
+    color: '#D98282',
+    fontSize: 10,
+    lineHeight: 15,
+    marginTop: -8,
+    marginBottom: 10,
   },
 
   button: {

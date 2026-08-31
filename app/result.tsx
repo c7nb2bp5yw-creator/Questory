@@ -1,15 +1,314 @@
-import { router } from 'expo-router';
-import React from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
+import { supabase } from '../lib/supabase';
+
+type AdventureType =
+  | 'EXPLORER'
+  | 'NATURE'
+  | 'SOCIAL'
+  | 'CHALLENGER';
+
+type ResultData = {
+  title: string;
+  description: string;
+  typeText: string;
+  traits: {
+    title: string;
+    text: string;
+  }[];
+  questNumber: string;
+  questTitle: string;
+  questDescription: string;
+  meta: string;
+};
+
+const resultData: Record<AdventureType, ResultData> = {
+  EXPLORER: {
+    title: '冒険することが、\n好きな人。',
+    description:
+      'あなたは、いつもの日常から少し離れて\n新しい景色や体験に出会うことで、\n毎日をもっと楽しめるタイプです。',
+    typeText:
+      '知らない場所へ行くことを恐れず、\n自分だけの発見を楽しむ冒険者。',
+    traits: [
+      {
+        title: '好奇心',
+        text: '新しい場所に惹かれる',
+      },
+      {
+        title: '行動力',
+        text: '思い立ったら動ける',
+      },
+      {
+        title: '発見',
+        text: '日常の中に面白さを見つける',
+      },
+      {
+        title: '挑戦',
+        text: '少しの勇気を楽しめる',
+      },
+    ],
+    questNumber: 'QUEST #027',
+    questTitle: '知らない駅で\n降りてみろ。',
+    questDescription:
+      '今日は、いつもの駅をひとつ飛び越えて。\n降りたことのない駅で、新しい景色を探そう。',
+    meta: '★★☆☆☆　　1 HOUR　　SOLO',
+  },
+
+  NATURE: {
+    title: '自然の中で、\n輝く人。',
+    description:
+      'あなたは、自然や美しい景色に触れることで\n心をリセットし、日常では味わえない\n特別な時間を楽しめるタイプです。',
+    typeText:
+      '海や山、夕日や星空。\n自然の中にある特別な瞬間を楽しむ冒険者。',
+    traits: [
+      {
+        title: '感性',
+        text: '美しい景色に心が動く',
+      },
+      {
+        title: '解放',
+        text: '自然の中で自由になれる',
+      },
+      {
+        title: '癒し',
+        text: '静かな時間を楽しめる',
+      },
+      {
+        title: '発見',
+        text: '身近な自然の魅力に気づける',
+      },
+    ],
+    questNumber: 'QUEST #014',
+    questTitle: '朝焼けを、\n見に行け。',
+    questDescription:
+      '少し早起きして、まだ見たことのない場所へ。\n朝の空が変わっていく瞬間を見届けよう。',
+    meta: '★★★☆☆　　2 HOURS　　SOLO',
+  },
+
+  SOCIAL: {
+    title: '誰かと過ごすことが、\n好きな人。',
+    description:
+      'あなたは、一人ではなく誰かと一緒に\n新しい体験をすることで、より大きな\n楽しさや思い出を生み出せるタイプです。',
+    typeText:
+      '誰かと一緒だからこそ生まれる\n笑いや思い出を楽しむ冒険者。',
+    traits: [
+      {
+        title: '共感',
+        text: '誰かと楽しさを共有できる',
+      },
+      {
+        title: '社交性',
+        text: '人との時間を大切にする',
+      },
+      {
+        title: '思い出',
+        text: '一緒に過ごした時間を楽しめる',
+      },
+      {
+        title: '楽しさ',
+        text: '周りの人も楽しませられる',
+      },
+    ],
+    questNumber: 'QUEST #041',
+    questTitle: '友達を誘って、\n知らない店へ。',
+    questDescription:
+      'いつものメンバーと、いつもとは違う場所へ。\n一緒に新しいお気に入りを見つけよう。',
+    meta: '★★☆☆☆　　2 HOURS　　GROUP',
+  },
+
+  CHALLENGER: {
+    title: '新しいことに、\n挑戦する人。',
+    description:
+      'あなたは、少し勇気が必要なことに挑戦することで\n自分自身の成長や、新しい自分を発見できる\nタイプです。',
+    typeText:
+      '「やったことがない」を楽しみながら、\n一歩踏み出すことができる冒険者。',
+    traits: [
+      {
+        title: '勇気',
+        text: '少し怖くても一歩踏み出せる',
+      },
+      {
+        title: '挑戦',
+        text: '未知の体験を楽しめる',
+      },
+      {
+        title: '成長',
+        text: '経験から自分を広げられる',
+      },
+      {
+        title: '行動力',
+        text: '思い立ったら挑戦できる',
+      },
+    ],
+    questNumber: 'QUEST #063',
+    questTitle: 'やったことのない\nことをやれ。',
+    questDescription:
+      '今日は、今まで一度もやったことのないことを一つ。\n小さな挑戦から、新しい自分を見つけよう。',
+    meta: '★★★☆☆　　1 HOUR　　BRAVE',
+  },
+};
+
+function calculateAdventureType(answers: number[]): AdventureType {
+  const scores: Record<AdventureType, number> = {
+    EXPLORER: 0,
+    NATURE: 0,
+    SOCIAL: 0,
+    CHALLENGER: 0,
+  };
+
+  answers.forEach((answer, questionIndex) => {
+    if (answer === undefined) {
+      return;
+    }
+
+    switch (questionIndex) {
+      case 0:
+        if (answer === 0) scores.EXPLORER += 2;
+        if (answer === 1) scores.NATURE += 2;
+        if (answer === 2) scores.SOCIAL += 2;
+        if (answer === 3) scores.CHALLENGER += 1;
+        break;
+
+      case 1:
+        if (answer === 0) scores.EXPLORER += 2;
+        if (answer === 1) scores.CHALLENGER += 2;
+        if (answer === 2) scores.SOCIAL += 2;
+        break;
+
+      case 2:
+        if (answer === 0) scores.NATURE += 2;
+        if (answer === 1) scores.EXPLORER += 2;
+        if (answer === 2) scores.SOCIAL += 2;
+        if (answer === 3) scores.CHALLENGER += 2;
+        break;
+
+      case 3:
+        if (answer === 0) scores.EXPLORER += 1;
+        if (answer === 1) scores.EXPLORER += 1;
+        if (answer === 2) scores.SOCIAL += 2;
+        if (answer === 3) scores.SOCIAL += 2;
+        break;
+
+      case 4:
+        if (answer === 0) scores.EXPLORER += 2;
+        if (answer === 1) scores.EXPLORER += 1;
+        if (answer === 2) scores.CHALLENGER += 1;
+        if (answer === 3) scores.EXPLORER += 1;
+        break;
+
+      case 5:
+        if (answer === 0) scores.NATURE += 2;
+        if (answer === 1) scores.NATURE += 1;
+        if (answer === 2) scores.SOCIAL += 2;
+        if (answer === 3) scores.CHALLENGER += 1;
+        break;
+
+      case 6:
+        if (answer === 0) scores.SOCIAL += 2;
+        if (answer === 1) scores.SOCIAL += 1;
+        if (answer === 2) scores.SOCIAL += 2;
+        if (answer === 3) scores.EXPLORER += 1;
+        break;
+
+      case 7:
+        if (answer === 0) scores.NATURE += 2;
+        if (answer === 1) scores.EXPLORER += 2;
+        if (answer === 2) scores.SOCIAL += 2;
+        if (answer === 3) scores.CHALLENGER += 2;
+        break;
+
+      case 8:
+        if (answer === 0) scores.CHALLENGER += 2;
+        if (answer === 1) scores.NATURE += 2;
+        if (answer === 2) scores.SOCIAL += 2;
+        if (answer === 3) scores.CHALLENGER += 2;
+        break;
+
+      case 9:
+        if (answer === 0) scores.EXPLORER += 2;
+        if (answer === 1) scores.NATURE += 1;
+        if (answer === 2) scores.SOCIAL += 2;
+        if (answer === 3) scores.CHALLENGER += 2;
+        break;
+
+      default:
+        break;
+    }
+  });
+
+  const types: AdventureType[] = [
+    'EXPLORER',
+    'NATURE',
+    'SOCIAL',
+    'CHALLENGER',
+  ];
+
+  return types.reduce((best, type) => {
+    return scores[type] > scores[best] ? type : best;
+  }, 'EXPLORER');
+}
 
 export default function ResultScreen() {
+  const params = useLocalSearchParams<{ answers?: string }>();
+  const [isSaving, setIsSaving] = useState(true);
+  const [error, setError] = useState('');
+
+  const adventureType = useMemo<AdventureType>(() => {
+    try {
+      const parsedAnswers = params.answers
+        ? JSON.parse(params.answers)
+        : [];
+
+      return calculateAdventureType(parsedAnswers);
+    } catch {
+      return 'EXPLORER';
+    }
+  }, [params.answers]);
+
+  const result = resultData[adventureType];
+
+  useEffect(() => {
+    const saveResult = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setError('ログイン情報を確認できませんでした。');
+        setIsSaving(false);
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          adventure_type: adventureType,
+          onboarding_completed: true,
+        })
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.log('PROFILE UPDATE ERROR:', updateError);
+        setError(
+          '診断結果の保存に失敗しました。もう一度お試しください。'
+        );
+      }
+
+      setIsSaving(false);
+    };
+
+    saveResult();
+  }, [adventureType]);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -30,16 +329,11 @@ export default function ResultScreen() {
           </Text>
 
           <Text style={styles.title}>
-            冒険することが、{'\n'}
-            好きな人。
+            {result.title}
           </Text>
 
           <Text style={styles.description}>
-            あなたは、いつもの日常から少し離れて
-            {'\n'}
-            新しい景色や体験に出会うことで、
-            {'\n'}
-            毎日をもっと楽しめるタイプです。
+            {result.description}
           </Text>
         </View>
 
@@ -49,13 +343,11 @@ export default function ResultScreen() {
           </Text>
 
           <Text style={styles.typeTitle}>
-            EXPLORER
+            {adventureType}
           </Text>
 
           <Text style={styles.typeText}>
-            知らない場所へ行くことを恐れず、
-            {'\n'}
-            自分だけの発見を楽しむ冒険者。
+            {result.typeText}
           </Text>
         </View>
 
@@ -71,11 +363,11 @@ export default function ResultScreen() {
               </Text>
 
               <Text style={styles.traitTitle}>
-                好奇心
+                {result.traits[0].title}
               </Text>
 
               <Text style={styles.traitText}>
-                新しい場所に惹かれる
+                {result.traits[0].text}
               </Text>
             </View>
 
@@ -85,11 +377,11 @@ export default function ResultScreen() {
               </Text>
 
               <Text style={styles.traitTitle}>
-                行動力
+                {result.traits[1].title}
               </Text>
 
               <Text style={styles.traitText}>
-                思い立ったら動ける
+                {result.traits[1].text}
               </Text>
             </View>
           </View>
@@ -103,11 +395,11 @@ export default function ResultScreen() {
               </Text>
 
               <Text style={styles.traitTitle}>
-                発見
+                {result.traits[2].title}
               </Text>
 
               <Text style={styles.traitText}>
-                日常の中に面白さを見つける
+                {result.traits[2].text}
               </Text>
             </View>
 
@@ -117,11 +409,11 @@ export default function ResultScreen() {
               </Text>
 
               <Text style={styles.traitTitle}>
-                挑戦
+                {result.traits[3].title}
               </Text>
 
               <Text style={styles.traitText}>
-                少しの勇気を楽しめる
+                {result.traits[3].text}
               </Text>
             </View>
           </View>
@@ -133,33 +425,40 @@ export default function ResultScreen() {
 
         <View style={styles.questCard}>
           <Text style={styles.questNumber}>
-            QUEST #027
+            {result.questNumber}
           </Text>
 
           <Text style={styles.questTitle}>
-            知らない駅で{'\n'}
-            降りてみろ。
+            {result.questTitle}
           </Text>
 
           <Text style={styles.questDescription}>
-            今日は、いつもの駅をひとつ飛び越えて。
-            {'\n'}
-            降りたことのない駅で、新しい景色を探そう。
+            {result.questDescription}
           </Text>
 
           <View style={styles.meta}>
             <Text style={styles.metaText}>
-              ★★☆☆☆　　1 HOUR　　SOLO
+              {result.meta}
             </Text>
           </View>
         </View>
 
+        {error ? (
+          <Text style={styles.error}>
+            {error}
+          </Text>
+        ) : null}
+
         <Pressable
-          style={styles.startButton}
+          style={[
+            styles.startButton,
+            isSaving && styles.disabledButton,
+          ]}
           onPress={() => router.replace('/quests')}
+          disabled={isSaving}
         >
           <Text style={styles.startButtonText}>
-            START FIRST QUEST
+            {isSaving ? 'SAVING...' : 'START FIRST QUEST'}
           </Text>
         </Pressable>
 
@@ -353,11 +652,23 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
 
+  error: {
+    color: '#D98282',
+    fontSize: 10,
+    lineHeight: 15,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+
   startButton: {
     backgroundColor: '#FFFFFF',
     borderRadius: 17,
     paddingVertical: 18,
     alignItems: 'center',
+  },
+
+  disabledButton: {
+    opacity: 0.35,
   },
 
   startButtonText: {

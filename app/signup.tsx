@@ -10,18 +10,38 @@ import {
   View,
 } from 'react-native';
 
+import { useAuth } from '@/context/auth';
+
 export default function SignupScreen() {
+  const { signUpWithPassword } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const canSubmit = email.trim().length > 0 && password.length > 0;
+  const isDisabled = !canSubmit || isSubmitting;
 
-  const handleSignup = () => {
-    if (!canSubmit) {
+  const handleSignup = async () => {
+    if (isDisabled) {
       return;
     }
 
-    router.push('/onboarding');
+    setErrorMessage(null);
+    setIsSubmitting(true);
+
+    const { error } = await signUpWithPassword(email.trim(), password);
+
+    setIsSubmitting(false);
+
+    if (error) {
+      setErrorMessage(
+        '登録に失敗しました。入力内容をご確認ください。'
+      );
+      return;
+    }
+
+    router.replace('/onboarding');
   };
 
   return (
@@ -71,6 +91,7 @@ export default function SignupScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="email-address"
+            editable={!isSubmitting}
           />
 
           <Text style={styles.label}>
@@ -84,19 +105,26 @@ export default function SignupScreen() {
             placeholder="••••••••"
             placeholderTextColor="#4F5B6E"
             secureTextEntry
+            editable={!isSubmitting}
           />
 
         </View>
 
+        {errorMessage && (
+          <Text style={styles.errorText}>
+            {errorMessage}
+          </Text>
+        )}
+
         <Pressable
           style={[
             styles.button,
-            !canSubmit && styles.disabledButton,
+            isDisabled && styles.disabledButton,
           ]}
           onPress={handleSignup}
         >
           <Text style={styles.buttonText}>
-            SIGN UP
+            {isSubmitting ? 'SIGNING UP...' : 'SIGN UP'}
           </Text>
         </Pressable>
 
@@ -196,6 +224,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 15,
     marginBottom: 20,
+  },
+
+  errorText: {
+    color: '#D98282',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 14,
   },
 
   button: {

@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
     Pressable,
@@ -9,10 +10,18 @@ import {
     View,
 } from 'react-native';
 
+import { useAuth } from '@/context/auth';
+
 export default function SettingsScreen() {
+  const { signOut } = useAuth();
   const [notifications, setNotifications] = useState(true);
   const [questNotifications, setQuestNotifications] = useState(true);
   const [clearNotifications, setClearNotifications] = useState(true);
+
+  const handleLogout = async () => {
+    await signOut();
+    router.replace('/login');
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -169,7 +178,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* LOGOUT */}
-        <Pressable style={styles.logoutButton}>
+        <Pressable style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutText}>
             LOG OUT
           </Text>

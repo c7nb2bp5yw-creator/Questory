@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -8,40 +9,95 @@ import {
   Text,
   View,
 } from 'react-native';
+import { supabase } from '../lib/supabase';
 
-const questList = [
-  {
-    number: '#027',
-    title: '知らない駅で降りてみろ。',
-    description: '予定を決めずに、初めての街を歩いてみよう。',
-    difficulty: '★★☆☆☆',
-    time: '1 HOUR',
-  },
-  {
-    number: '#026',
-    title: '朝5時に起きて日の出を見ろ。',
-    description: 'いつもより少し早く起きて、日の出を見に行こう。',
-    difficulty: '★★★☆☆',
-    time: '2 HOURS',
-  },
-  {
-    number: '#025',
-    title: '一人で知らない店に入れ。',
-    description: '気になっていたけど入ったことのない店へ行こう。',
-    difficulty: '★★☆☆☆',
-    time: '30 MIN',
-  },
-];
+type Quest = {
+  id: string;
+  number: string;
+  title: string;
+  description: string;
+  difficulty: string;
+  estimated_time: string;
+  adventure_type: string;
+};
 
 export default function QuestsScreen() {
+  const [questList, setQuestList] = useState<Quest[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [skipCount, setSkipCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadQuests = async () => {
+      setIsLoading(true);
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        Alert.alert(
+          'エラー',
+          'ログイン情報を確認できませんでした。'
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      const { data: profile, error: profileError } =
+        await supabase
+          .from('profiles')
+          .select('adventure_type')
+          .eq('id', user.id)
+          .single();
+
+      if (profileError || !profile) {
+        console.log('PROFILE LOAD ERROR:', profileError);
+
+        Alert.alert(
+          'エラー',
+          'プロフィールを読み込めませんでした。'
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      const adventureType =
+        profile.adventure_type?.trim().toUpperCase();
+
+      const { data: quests, error: questError } =
+        await supabase
+          .from('quests')
+          .select(
+            'id, number, title, description, difficulty, estimated_time, adventure_type'
+          )
+          .eq('adventure_type', adventureType)
+          .order('number', { ascending: false });
+
+      if (questError) {
+        console.log('QUEST LOAD ERROR:', questError);
+
+        Alert.alert(
+          'エラー',
+          'Questを読み込めませんでした。'
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      setQuestList(quests ?? []);
+      setIsLoading(false);
+    };
+
+    loadQuests();
+  }, []);
 
   const currentQuest = questList[currentIndex];
   const remaining = 2 - skipCount;
 
   const handleSkip = () => {
-    if (skipCount >= 2) {
+    if (skipCount >= 2 || questList.length === 0) {
       return;
     }
 
@@ -55,6 +111,53 @@ export default function QuestsScreen() {
       return prev + 1;
     });
   };
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>
+            FINDING YOUR QUEST...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!currentQuest) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.logo}>
+            QUESTORY
+          </Text>
+
+          <Text style={styles.sub}>
+            DAILY QUEST
+          </Text>
+
+          <Text style={styles.emptyTitle}>
+            まだQuestがありません。
+          </Text>
+
+          <Text style={styles.emptyText}>
+            あなたのAdventure Typeに合うQuestを
+            {'\n'}
+            これから追加していこう。
+          </Text>
+
+          <Pressable
+            style={styles.backToHomeButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.backToHomeText}>
+              BACK
+            </Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -140,7 +243,7 @@ export default function QuestsScreen() {
               </Text>
 
               <Text style={styles.infoValue}>
-                {currentQuest.time}
+                {currentQuest.estimated_time}
               </Text>
             </View>
 
@@ -150,7 +253,14 @@ export default function QuestsScreen() {
 
         <Pressable
           style={styles.startButton}
-          onPress={() => router.push('/quest')}
+          onPress={() =>
+            router.push({
+              pathname: '/quest',
+              params: {
+                id: currentQuest.id,
+              },
+            })
+          }
         >
           <Text style={styles.startText}>
             VIEW QUEST
@@ -420,5 +530,55 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 17,
     marginTop: 7,
+  },
+
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  loadingText: {
+    color: '#8ECAFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+  },
+
+  emptyContainer: {
+    flex: 1,
+    paddingHorizontal: 22,
+    paddingTop: 30,
+    alignItems: 'center',
+  },
+
+  emptyTitle: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '900',
+    marginTop: 80,
+  },
+
+  emptyText: {
+    color: '#687386',
+    fontSize: 11,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginTop: 15,
+  },
+
+  backToHomeButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 17,
+    paddingVertical: 17,
+    paddingHorizontal: 70,
+    marginTop: 35,
+  },
+
+  backToHomeText: {
+    color: '#080B12',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.5,
   },
 });

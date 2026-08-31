@@ -1,6 +1,7 @@
-import { router } from 'expo-router';
-import React, { useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -8,9 +9,95 @@ import {
   Text,
   View,
 } from 'react-native';
+import { supabase } from '../lib/supabase';
+
+type Quest = {
+  id: string;
+  number: string;
+  title: string;
+  description: string;
+  difficulty: string;
+  estimated_time: string;
+  adventure_type: string;
+};
 
 export default function QuestScreen() {
+  const { id } = useLocalSearchParams<{ id?: string }>();
+
+  const [quest, setQuest] = useState<Quest | null>(null);
   const [started, setStarted] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadQuest = async () => {
+      if (!id) {
+        Alert.alert(
+          'エラー',
+          'Questの情報が見つかりませんでした。'
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('quests')
+        .select(
+          'id, number, title, description, difficulty, estimated_time, adventure_type'
+        )
+        .eq('id', id)
+        .single();
+
+      console.log('DETAIL QUEST:', data);
+      console.log('DETAIL QUEST ERROR:', error);
+
+      if (error || !data) {
+        Alert.alert(
+          'エラー',
+          'Questを読み込めませんでした。'
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      setQuest(data);
+      setIsLoading(false);
+    };
+
+    loadQuest();
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>
+            LOADING QUEST...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!quest) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.emptyTitle}>
+            QUEST NOT FOUND
+          </Text>
+
+          <Pressable
+            style={styles.backHomeButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.backHomeText}>
+              BACK
+            </Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -33,26 +120,22 @@ export default function QuestScreen() {
           QUEST DETAIL
         </Text>
 
-        {/* HERO */}
         <View style={styles.hero}>
 
           <Text style={styles.questNumber}>
-            QUEST #027
+            {quest.number}
           </Text>
 
           <Text style={styles.title}>
-            知らない駅で{'\n'}
-            降りてみろ。
+            {quest.title}
           </Text>
 
           <Text style={styles.description}>
-            予定を決めずに、初めての街を
-            自分の足で歩いてみよう。
+            {quest.description}
           </Text>
 
         </View>
 
-        {/* META */}
         <View style={styles.metaCard}>
 
           <View style={styles.metaItem}>
@@ -61,7 +144,7 @@ export default function QuestScreen() {
             </Text>
 
             <Text style={styles.metaValue}>
-              ★☆☆☆☆
+              {quest.difficulty}
             </Text>
           </View>
 
@@ -73,7 +156,7 @@ export default function QuestScreen() {
             </Text>
 
             <Text style={styles.metaValue}>
-              1 HOUR
+              {quest.estimated_time}
             </Text>
           </View>
 
@@ -91,7 +174,6 @@ export default function QuestScreen() {
 
         </View>
 
-        {/* HOW TO CLEAR */}
         <Text style={styles.sectionLabel}>
           HOW TO CLEAR
         </Text>
@@ -109,12 +191,12 @@ export default function QuestScreen() {
             <View style={styles.stepContent}>
 
               <Text style={styles.stepTitle}>
-                知らない駅を選ぶ
+                QUESTに挑戦する
               </Text>
 
               <Text style={styles.stepText}>
-                今まで降りたことのない駅を
-                ひとつ選んでください。
+                今日のQuestを実際にやってみよう。
+                自分のペースで楽しんでください。
               </Text>
 
             </View>
@@ -133,11 +215,11 @@ export default function QuestScreen() {
             <View style={styles.stepContent}>
 
               <Text style={styles.stepTitle}>
-                1時間過ごす
+                冒険を楽しむ
               </Text>
 
               <Text style={styles.stepText}>
-                その街を自由に歩いてみます。
+                普段とは少し違うことをしてみよう。
                 何をするかはあなた次第。
               </Text>
 
@@ -170,7 +252,6 @@ export default function QuestScreen() {
 
         </View>
 
-        {/* SAFETY */}
         <View style={styles.warningCard}>
 
           <Text style={styles.warningIcon}>
@@ -192,7 +273,6 @@ export default function QuestScreen() {
 
         </View>
 
-        {/* START / CLEAR */}
         {!started ? (
 
           <Pressable
@@ -228,7 +308,14 @@ export default function QuestScreen() {
 
             <Pressable
               style={styles.clearButton}
-              onPress={() => router.push('/post')}
+              onPress={() =>
+                router.push({
+                  pathname: '/post',
+                  params: {
+                    questId: quest.id,
+                  },
+                })
+              }
             >
               <Text style={styles.clearButtonText}>
                 CLEAR QUEST
@@ -521,6 +608,41 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textAlign: 'center',
     marginTop: 35,
+  },
+
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+
+  loadingText: {
+    color: '#8ECAFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+  },
+
+  emptyTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+
+  backHomeButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 17,
+    paddingVertical: 17,
+    paddingHorizontal: 60,
+    marginTop: 25,
+  },
+
+  backHomeText: {
+    color: '#080B12',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.5,
   },
 
 });

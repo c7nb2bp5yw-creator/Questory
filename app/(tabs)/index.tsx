@@ -6,7 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View,
+  View
 } from 'react-native';
 
 import {
@@ -15,9 +15,27 @@ import {
   subscribeQuest,
 } from '../questStore';
 
+import { supabase } from '../../lib/supabase';
+
+type Quest = {
+  id: string;
+  number: string;
+  title: string;
+  description: string;
+  difficulty: string;
+  estimated_time: string;
+  adventure_type: string;
+};
+
 export default function HomeScreen() {
   const [hasQuest, setHasQuest] = useState(getHasJoinedQuest());
   const [started, setStarted] = useState(false);
+
+  const [recommendedQuest, setRecommendedQuest] =
+    useState<Quest | null>(null);
+
+  const [isLoadingQuest, setIsLoadingQuest] =
+    useState(true);
 
   useEffect(() => {
     const unsubscribe = subscribeQuest(() => {
@@ -26,6 +44,65 @@ export default function HomeScreen() {
     });
 
     return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const loadRecommendedQuest = async () => {
+      setIsLoadingQuest(true);
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        console.log('HOME USER ERROR:', userError);
+        setIsLoadingQuest(false);
+        return;
+      }
+
+      const { data: profile, error: profileError } =
+        await supabase
+          .from('profiles')
+          .select('adventure_type')
+          .eq('id', user.id)
+          .single();
+
+      if (profileError || !profile) {
+        console.log('HOME PROFILE ERROR:', profileError);
+        setIsLoadingQuest(false);
+        return;
+      }
+
+      const adventureType =
+        profile.adventure_type?.trim().toUpperCase();
+
+      const { data: quests, error: questError } =
+        await supabase
+          .from('quests')
+          .select(
+            'id, number, title, description, difficulty, estimated_time, adventure_type'
+          )
+          .eq('adventure_type', adventureType)
+          .order('number', { ascending: false })
+          .limit(1);
+
+      if (questError) {
+        console.log('HOME QUEST ERROR:', questError);
+        setIsLoadingQuest(false);
+        return;
+      }
+
+      setRecommendedQuest(
+        quests && quests.length > 0
+          ? quests[0]
+          : null
+      );
+
+      setIsLoadingQuest(false);
+    };
+
+    loadRecommendedQuest();
   }, []);
 
   return (
@@ -49,7 +126,9 @@ export default function HomeScreen() {
 
             <Pressable
               style={styles.notificationButton}
-              onPress={() => router.push('/notifications')}
+              onPress={() =>
+                router.push('/notifications')
+              }
             >
               <Text style={styles.notificationIcon}>
                 ♢
@@ -240,23 +319,36 @@ export default function HomeScreen() {
               RECOMMENDED FOR YOU
             </Text>
 
-            <Text style={styles.aiQuestTitle}>
-              知らない駅で{'\n'}
-              降りてみろ。
-            </Text>
-
-            <Text style={styles.aiQuestText}>
-              あなたの冒険スタイルに合わせたQUEST。
-            </Text>
-
-            <Pressable
-              style={styles.outlineButton}
-              onPress={() => router.push('/quests')}
-            >
-              <Text style={styles.outlineButtonText}>
-                VIEW QUEST →
+            {isLoadingQuest ? (
+              <Text style={styles.aiQuestTitle}>
+                Questを探しています...
               </Text>
-            </Pressable>
+            ) : recommendedQuest ? (
+              <>
+                <Text style={styles.aiQuestTitle}>
+                  {recommendedQuest.title}
+                </Text>
+
+                <Text style={styles.aiQuestText}>
+                  あなたの冒険スタイルに合わせたQUEST。
+                </Text>
+
+                <Pressable
+                  style={styles.outlineButton}
+                  onPress={() =>
+                    router.push('/quests')
+                  }
+                >
+                  <Text style={styles.outlineButtonText}>
+                    VIEW QUEST →
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              <Text style={styles.aiQuestTitle}>
+                まだQuestがありません。
+              </Text>
+            )}
 
           </View>
         </View>

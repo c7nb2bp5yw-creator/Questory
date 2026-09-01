@@ -23,10 +23,9 @@ export default function SettingsScreen() {
     setQuestNotifications,
   ] = useState(true);
 
-  const [
-    clearNotifications,
-    setClearNotifications,
-  ] = useState(true);
+  const handleBack = () => {
+    router.back();
+  };
 
   const handleLogout = async () => {
     await signOut();
@@ -51,17 +50,39 @@ export default function SettingsScreen() {
           false
         }
       >
-        <Text style={styles.logo}>
-          QUESTORY
-        </Text>
+        {/* HEADER */}
 
-        <Text style={styles.sub}>
-          SETTINGS
-        </Text>
+        <View style={styles.header}>
+          <Pressable
+            style={styles.backButton}
+            onPress={handleBack}
+            hitSlop={12}
+          >
+            <Text
+              style={styles.backButtonText}
+            >
+              ← BACK
+            </Text>
+          </Pressable>
+
+          <View
+            style={styles.headerBrand}
+          >
+            <Text style={styles.logo}>
+              QUESTORY
+            </Text>
+
+            <Text style={styles.sub}>
+              SETTINGS
+            </Text>
+          </View>
+        </View>
 
         <Text style={styles.title}>
           設定
         </Text>
+
+        {/* NOTIFICATIONS */}
 
         <Text
           style={styles.sectionLabel}
@@ -130,41 +151,9 @@ export default function SettingsScreen() {
               }
             />
           </View>
-
-          <View style={styles.line} />
-
-          <View style={styles.row}>
-            <View
-              style={styles.rowText}
-            >
-              <Text
-                style={styles.rowTitle}
-              >
-                CLEAR通知
-              </Text>
-
-              <Text
-                style={
-                  styles.rowDescription
-                }
-              >
-                フォロー中の人がQUESTをCLEARした時
-              </Text>
-            </View>
-
-            <Switch
-              value={
-                clearNotifications
-              }
-              onValueChange={
-                setClearNotifications
-              }
-              disabled={
-                !notifications
-              }
-            />
-          </View>
         </View>
+
+        {/* ACCOUNT */}
 
         <Text
           style={styles.sectionLabel}
@@ -228,6 +217,8 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
 
+        {/* PRIVACY / SAFETY */}
+
         <Text
           style={styles.sectionLabel}
         >
@@ -262,6 +253,8 @@ export default function SettingsScreen() {
             </Text>
           </Pressable>
         </View>
+
+        {/* INFORMATION */}
 
         <Text
           style={styles.sectionLabel}
@@ -317,6 +310,8 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
 
+        {/* LOGOUT */}
+
         <Pressable
           style={styles.logoutButton}
           onPress={handleLogout}
@@ -347,6 +342,29 @@ const styles =
       paddingHorizontal: 22,
       paddingTop: 20,
       paddingBottom: 120,
+    },
+
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: 42,
+    },
+
+    backButton: {
+      minWidth: 72,
+      paddingVertical: 8,
+    },
+
+    backButtonText: {
+      color: '#8A96A8',
+      fontSize: 10,
+      fontWeight: '900',
+      letterSpacing: 1.2,
+    },
+
+    headerBrand: {
+      flex: 1,
+      alignItems: 'flex-end',
     },
 
     logo: {

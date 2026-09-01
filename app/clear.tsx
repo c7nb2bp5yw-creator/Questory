@@ -12,16 +12,18 @@ import {
 
 import { supabase } from '../lib/supabase';
 
+type QuestInfo = {
+  number: string;
+  title: string;
+  description: string;
+};
+
 type Completion = {
   id: string;
   caption: string | null;
   photo_url: string | null;
   completed_at: string;
-  quest: {
-    number: string;
-    title: string;
-    description: string;
-  };
+  quest: QuestInfo | QuestInfo[] | null;
 };
 
 export default function ClearScreen() {
@@ -43,15 +45,34 @@ export default function ClearScreen() {
         return;
       }
 
+      /*
+       * ログイン確認
+       *
+       * CLEARはログイン済みユーザーだけ
+       * 閲覧できる。
+       */
       const {
         data: { user },
+        error: authError,
       } = await supabase.auth.getUser();
 
-      if (!user) {
+      if (authError || !user) {
+        console.log(
+          'CLEAR AUTH ERROR:',
+          authError,
+        );
+
         setLoading(false);
         return;
       }
 
+      /*
+       * CLEAR詳細取得
+       *
+       * 自分のCLEARだけではなく、
+       * 他ユーザーの公開CLEARも
+       * completionIdから取得する。
+       */
       const { data, error } =
         await supabase
           .from('quest_completions')
@@ -69,7 +90,6 @@ export default function ClearScreen() {
             `,
           )
           .eq('id', completionId)
-          .eq('user_id', user.id)
           .single();
 
       console.log(
@@ -94,14 +114,24 @@ export default function ClearScreen() {
     loadCompletion();
   }, [completionId]);
 
+  const getQuest = () => {
+    if (!completion) {
+      return null;
+    }
+
+    if (Array.isArray(completion.quest)) {
+      return completion.quest[0] ?? null;
+    }
+
+    return completion.quest;
+  };
+
   if (loading) {
     return (
       <SafeAreaView
         style={styles.container}
       >
-        <View
-          style={styles.center}
-        >
+        <View style={styles.center}>
           <Text
             style={styles.loadingText}
           >
@@ -117,9 +147,7 @@ export default function ClearScreen() {
       <SafeAreaView
         style={styles.container}
       >
-        <View
-          style={styles.center}
-        >
+        <View style={styles.center}>
           <Text
             style={styles.errorTitle}
           >
@@ -128,10 +156,47 @@ export default function ClearScreen() {
 
           <Pressable
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() =>
+              router.back()
+            }
           >
             <Text
-              style={styles.backButtonText}
+              style={
+                styles.backButtonText
+              }
+            >
+              BACK
+            </Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const quest = getQuest();
+
+  if (!quest) {
+    return (
+      <SafeAreaView
+        style={styles.container}
+      >
+        <View style={styles.center}>
+          <Text
+            style={styles.errorTitle}
+          >
+            QUEST NOT FOUND
+          </Text>
+
+          <Pressable
+            style={styles.backButton}
+            onPress={() =>
+              router.back()
+            }
+          >
+            <Text
+              style={
+                styles.backButtonText
+              }
             >
               BACK
             </Text>
@@ -154,10 +219,11 @@ export default function ClearScreen() {
           styles.content
         }
       >
-
         <Pressable
           style={styles.backTop}
-          onPress={() => router.back()}
+          onPress={() =>
+            router.back()
+          }
         >
           <Text
             style={styles.backTopText}
@@ -174,10 +240,7 @@ export default function ClearScreen() {
           CLEAR RECORD
         </Text>
 
-        <View
-          style={styles.hero}
-        >
-
+        <View style={styles.hero}>
           <Text
             style={styles.clearIcon}
           >
@@ -190,43 +253,39 @@ export default function ClearScreen() {
             QUEST CLEAR
           </Text>
 
-          <Text
-            style={styles.title}
-          >
-            冒険を残しました。
+          <Text style={styles.title}>
+            冒険の記録。
           </Text>
-
         </View>
 
         <View
           style={styles.questCard}
         >
-
           <Text
             style={styles.questNumber}
           >
-            {completion.quest.number}
+            {quest.number}
           </Text>
 
           <Text
             style={styles.questTitle}
           >
-            {completion.quest.title}
+            {quest.title}
           </Text>
 
           <Text
-            style={styles.questDescription}
+            style={
+              styles.questDescription
+            }
           >
-            {completion.quest.description}
+            {quest.description}
           </Text>
-
         </View>
 
         {completion.photo_url && (
           <View
             style={styles.photoCard}
           >
-
             <Text
               style={styles.sectionLabel}
             >
@@ -239,14 +298,12 @@ export default function ClearScreen() {
               }}
               style={styles.photo}
             />
-
           </View>
         )}
 
         <View
           style={styles.memoryCard}
         >
-
           <Text
             style={styles.sectionLabel}
           >
@@ -263,13 +320,9 @@ export default function ClearScreen() {
             {completion.caption ||
               'MEMORYは残されていません。'}
           </Text>
-
         </View>
 
-        <View
-          style={styles.dateCard}
-        >
-
+        <View style={styles.dateCard}>
           <Text
             style={styles.dateLabel}
           >
@@ -281,19 +334,15 @@ export default function ClearScreen() {
           >
             {date}
           </Text>
-
         </View>
 
-        <View
-          style={styles.footer}
-        >
+        <View style={styles.footer}>
           <Text
             style={styles.footerText}
           >
             YOUR ADVENTURE. YOUR STORY.
           </Text>
         </View>
-
       </ScrollView>
     </SafeAreaView>
   );

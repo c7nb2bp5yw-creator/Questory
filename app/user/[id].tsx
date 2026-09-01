@@ -82,6 +82,12 @@ export default function UserProfileScreen() {
   const [isBlocked, setIsBlocked] =
     useState(false);
 
+  const [collaborationLoading, setCollaborationLoading] =
+    useState(false);
+
+  const [isCollaborating, setIsCollaborating] =
+    useState(false);
+
   const loadProfile = useCallback(
     async () => {
       if (!targetUserId) {
@@ -241,12 +247,47 @@ export default function UserProfileScreen() {
 
             setNextQuest(null);
           } else {
-            setNextQuest(
-              questData as QuestInfo | null,
-            );
+            const loadedQuest =
+              questData as QuestInfo | null;
+
+            setNextQuest(loadedQuest);
+
+            /*
+             * このNEXT QUESTに
+             * 自分がすでに協力しているか確認
+             */
+            if (
+              loadedQuest &&
+              user.id !== targetUserId
+            ) {
+              const {
+                data: collaborationData,
+                error: collaborationError,
+              } = await supabase
+                .from('quest_collaborations')
+                .select('id')
+                .eq('owner_id', targetUserId)
+                .eq('collaborator_id', user.id)
+                .eq('quest_id', loadedQuest.id)
+                .maybeSingle();
+
+              if (collaborationError) {
+                console.log(
+                  'COLLABORATION STATUS ERROR:',
+                  collaborationError,
+                );
+              }
+
+              setIsCollaborating(
+                !!collaborationData,
+              );
+            } else {
+              setIsCollaborating(false);
+            }
           }
         } else {
           setNextQuest(null);
+          setIsCollaborating(false);
         }
 
         /*
@@ -780,6 +821,138 @@ export default function UserProfileScreen() {
     );
   };
 
+  /*
+   * CO-OP QUEST
+   */
+  const handleCollaboration = async () => {
+    if (
+      !currentUserId ||
+      !targetUserId ||
+      !nextQuest ||
+      currentUserId === targetUserId ||
+      collaborationLoading ||
+      safetyLoading
+    ) {
+      return;
+    }
+
+    setCollaborationLoading(true);
+
+    try {
+      /*
+       * 参加直前にもBLOCK状態を確認
+       */
+      const {
+        data: blockData,
+        error: blockError,
+      } = await supabase
+        .from('blocks')
+        .select('id')
+        .or(
+          `and(blocker_id.eq.${currentUserId},blocked_id.eq.${targetUserId}),and(blocker_id.eq.${targetUserId},blocked_id.eq.${currentUserId})`,
+        )
+        .limit(1);
+
+      if (blockError) {
+        console.log(
+          'CO-OP BLOCK CHECK ERROR:',
+          blockError,
+        );
+
+        Alert.alert(
+          'エラー',
+          '処理に失敗しました。',
+        );
+
+        return;
+      }
+
+      if (
+        blockData &&
+        blockData.length > 0
+      ) {
+        Alert.alert(
+          '協力できません',
+          'このユーザーとは現在やり取りできません。',
+        );
+
+        return;
+      }
+
+      if (isCollaborating) {
+        Alert.alert(
+          'すでに協力中です',
+          'このQUESTにはすでに協力しています。',
+        );
+
+        return;
+      }
+
+      const {
+        data: collaborationData,
+        error: collaborationError,
+      } = await supabase
+        .from('quest_collaborations')
+        .insert({
+          owner_id: targetUserId,
+          collaborator_id: currentUserId,
+          quest_id: nextQuest.id,
+        })
+        .select('id')
+        .single();
+
+      if (
+        collaborationError ||
+        !collaborationData
+      ) {
+        console.log(
+          'CO-OP INSERT ERROR:',
+          collaborationError,
+        );
+
+        if (
+          collaborationError?.code ===
+          '23505'
+        ) {
+          setIsCollaborating(true);
+
+          Alert.alert(
+            'すでに協力中です',
+            'このQUESTにはすでに協力しています。',
+          );
+
+          return;
+        }
+
+        Alert.alert(
+          'エラー',
+          'QUESTに協力できませんでした。',
+        );
+
+        return;
+      }
+
+      setIsCollaborating(true);
+
+      Alert.alert(
+        'CO-OP QUEST',
+        'このQUESTへの協力を開始しました。',
+      );
+    } catch (error) {
+      console.log(
+        'CO-OP ACTION ERROR:',
+        error,
+      );
+
+      Alert.alert(
+        'エラー',
+        'QUESTに協力できませんでした。',
+      );
+    } finally {
+      setCollaborationLoading(false);
+    }
+  };
+
   const getQuest = (
     completion: Completion,
   ) => {
@@ -1275,27 +1448,48 @@ export default function UserProfileScreen() {
                 {nextQuest.description}
               </Text>
 
-              <View
-                style={
-                  styles.joinPreview
-                }
-              >
-                <Text
+              {!isOwnProfile && (
+                <View
                   style={
-                    styles.joinPreviewText
+                    styles.joinPreview
                   }
                 >
-                  CO-OP QUEST
-                </Text>
+                  <Text
+                    style={
+                      styles.joinPreviewText
+                    }
+                  >
+                    CO-OP QUEST
+                  </Text>
 
-                <Text
-                  style={
-                    styles.joinComingSoon
-                  }
-                >
-                  JOIN COMING SOON
-                </Text>
-              </View>
+                  <Pressable
+                    onPress={
+                      handleCollaboration
+                    }
+                    disabled={
+                      collaborationLoading ||
+                      isCollaborating
+                    }
+                  >
+                    {collaborationLoading ? (
+                      <ActivityIndicator
+                        size="small"
+                        color="#8ECAFF"
+                      />
+                    ) : (
+                      <Text
+                        style={
+                          styles.joinComingSoon
+                        }
+                      >
+                        {isCollaborating
+                          ? 'CO-OP中'
+                          : '協力する'}
+                      </Text>
+                    )}
+                  </Pressable>
+                </View>
+              )}
             </View>
           ) : (
             <View

@@ -51,6 +51,12 @@ export default function ProfileScreen() {
   const [journey, setJourney] =
     useState<Completion[]>([]);
 
+  const [followersCount, setFollowersCount] =
+    useState(0);
+
+  const [followingCount, setFollowingCount] =
+    useState(0);
+
   const [isLoading, setIsLoading] =
     useState(true);
 
@@ -69,65 +75,151 @@ export default function ProfileScreen() {
   const loadProfile = useCallback(async () => {
     setIsLoading(true);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    if (userError || !user) {
-      Alert.alert(
-        'エラー',
-        'ログイン情報を確認できませんでした。',
+      if (userError || !user) {
+        Alert.alert(
+          'エラー',
+          'ログイン情報を確認できませんでした。',
+        );
+
+        return;
+      }
+
+      const { data, error } =
+        await supabase
+          .from('profiles')
+          .select(
+            'name, username, bio, avatar_url, adventure_type',
+          )
+          .eq('id', user.id)
+          .single();
+
+      if (error) {
+        console.log(
+          'PROFILE LOAD ERROR:',
+          error,
+        );
+
+        Alert.alert(
+          'エラー',
+          'プロフィールを読み込めませんでした。',
+        );
+
+        return;
+      }
+
+      setName(data.name ?? '');
+
+      setUserId(
+        data.username
+          ? `@${data.username}`
+          : '',
       );
 
-      setIsLoading(false);
-      return;
-    }
+      setBio(data.bio ?? '');
 
-    const { data, error } =
-      await supabase
-        .from('profiles')
-        .select(
-          'name, username, bio, avatar_url, adventure_type',
-        )
-        .eq('id', user.id)
-        .single();
+      setAdventureType(
+        data.adventure_type ?? '',
+      );
 
-    if (error) {
+      setProfileImage(
+        data.avatar_url ?? null,
+      );
+    } catch (error) {
       console.log(
-        'PROFILE LOAD ERROR:',
+        'PROFILE LOAD CATCH ERROR:',
         error,
       );
-
-      Alert.alert(
-        'エラー',
-        'プロフィールを読み込めませんでした。',
-      );
-
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    setName(data.name ?? '');
-
-    setUserId(
-      data.username
-        ? `@${data.username}`
-        : '',
-    );
-
-    setBio(data.bio ?? '');
-
-    setAdventureType(
-      data.adventure_type ?? '',
-    );
-
-    setProfileImage(
-      data.avatar_url ?? null,
-    );
-
-    setIsLoading(false);
   }, []);
+
+  /*
+   * FOLLOWERS / FOLLOWING
+   */
+  const loadFollowStats =
+    useCallback(async () => {
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError || !user) {
+          console.log(
+            'FOLLOW STATS USER ERROR:',
+            userError,
+          );
+
+          setFollowersCount(0);
+          setFollowingCount(0);
+          return;
+        }
+
+        const [
+          followersResult,
+          followingResult,
+        ] = await Promise.all([
+          supabase
+            .from('follows')
+            .select('*', {
+              count: 'exact',
+              head: true,
+            })
+            .eq(
+              'following_id',
+              user.id,
+            ),
+
+          supabase
+            .from('follows')
+            .select('*', {
+              count: 'exact',
+              head: true,
+            })
+            .eq(
+              'follower_id',
+              user.id,
+            ),
+        ]);
+
+        if (followersResult.error) {
+          console.log(
+            'FOLLOWERS COUNT ERROR:',
+            followersResult.error,
+          );
+        }
+
+        if (followingResult.error) {
+          console.log(
+            'FOLLOWING COUNT ERROR:',
+            followingResult.error,
+          );
+        }
+
+        setFollowersCount(
+          followersResult.count ?? 0,
+        );
+
+        setFollowingCount(
+          followingResult.count ?? 0,
+        );
+      } catch (error) {
+        console.log(
+          'FOLLOW STATS CATCH ERROR:',
+          error,
+        );
+
+        setFollowersCount(0);
+        setFollowingCount(0);
+      }
+    }, []);
 
   /*
    * QUEST HISTORY
@@ -277,11 +369,37 @@ export default function ProfileScreen() {
     useCallback(() => {
       loadProfile();
       loadJourney();
+      loadFollowStats();
     }, [
       loadProfile,
       loadJourney,
+      loadFollowStats,
     ]),
   );
+
+  /*
+   * FOLLOWERS LIST
+   */
+  const openFollowers = () => {
+    router.push({
+      pathname: '/follows',
+      params: {
+        mode: 'followers',
+      },
+    });
+  };
+
+  /*
+   * FOLLOWING LIST
+   */
+  const openFollowing = () => {
+    router.push({
+      pathname: '/follows',
+      params: {
+        mode: 'following',
+      },
+    });
+  };
 
   /*
    * PROFILE PHOTO
@@ -321,7 +439,7 @@ export default function ProfileScreen() {
    */
   const uploadProfileImage = async (
     imageUri: string,
-    userId: string,
+    currentUserId: string,
   ) => {
     try {
       const response =
@@ -345,7 +463,7 @@ export default function ProfileScreen() {
           : 'image/jpeg';
 
       const filePath =
-        `${userId}/avatar-${Date.now()}.${extension}`;
+        `${currentUserId}/avatar-${Date.now()}.${extension}`;
 
       const { error: uploadError } =
         await supabase.storage
@@ -420,10 +538,6 @@ export default function ProfileScreen() {
       let avatarUrl =
         profileImage;
 
-      /*
-       * 新しく選択した端末写真なら
-       * Storageへアップロード
-       */
       if (
         profileImage &&
         !profileImage.startsWith(
@@ -512,11 +626,9 @@ export default function ProfileScreen() {
         }
         keyboardShouldPersistTaps="handled"
       >
-
         {/* HEADER */}
 
         <View style={styles.topBar}>
-
           <View>
             <Text style={styles.logo}>
               QUESTORY
@@ -543,7 +655,6 @@ export default function ProfileScreen() {
               ⚙ SETTINGS
             </Text>
           </Pressable>
-
         </View>
 
         {isLoading ? (
@@ -565,7 +676,6 @@ export default function ProfileScreen() {
             <View
               style={styles.profileHeader}
             >
-
               <View
                 style={styles.avatar}
               >
@@ -605,7 +715,6 @@ export default function ProfileScreen() {
                   CHANGE PHOTO
                 </Text>
               </Pressable>
-
             </View>
 
             {/* PROFILE INFORMATION */}
@@ -723,7 +832,6 @@ export default function ProfileScreen() {
             <View
               style={styles.stats}
             >
-
               <View
                 style={styles.stat}
               >
@@ -744,42 +852,47 @@ export default function ProfileScreen() {
                 style={styles.divider}
               />
 
-              <View
+              <Pressable
                 style={styles.stat}
+                onPress={openFollowers}
               >
                 <Text
                   style={styles.statNumber}
                 >
-                  128
+                  {followersCount}
                 </Text>
 
                 <Text
-                  style={styles.statLabel}
+                  style={
+                    styles.statLabelActive
+                  }
                 >
                   FOLLOWERS
                 </Text>
-              </View>
+              </Pressable>
 
               <View
                 style={styles.divider}
               />
 
-              <View
+              <Pressable
                 style={styles.stat}
+                onPress={openFollowing}
               >
                 <Text
                   style={styles.statNumber}
                 >
-                  64
+                  {followingCount}
                 </Text>
 
                 <Text
-                  style={styles.statLabel}
+                  style={
+                    styles.statLabelActive
+                  }
                 >
                   FOLLOWING
                 </Text>
-              </View>
-
+              </Pressable>
             </View>
 
             {/* QUEST HISTORY */}
@@ -787,7 +900,6 @@ export default function ProfileScreen() {
             <View
               style={styles.historyHeader}
             >
-
               <View>
                 <Text
                   style={styles.sectionLabel}
@@ -807,7 +919,6 @@ export default function ProfileScreen() {
               >
                 {journey.length} CLEARED
               </Text>
-
             </View>
 
             {isLoadingJourney ? (
@@ -871,7 +982,6 @@ export default function ProfileScreen() {
                     })
                   }
                 >
-
                   <View
                     style={
                       styles.historyNumberBox
@@ -921,7 +1031,6 @@ export default function ProfileScreen() {
                   >
                     →
                   </Text>
-
                 </Pressable>
               ))
             )}
@@ -955,10 +1064,8 @@ export default function ProfileScreen() {
             >
               プロフィール情報はSupabaseに保存されます。
             </Text>
-
           </>
         )}
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -1142,6 +1249,7 @@ const styles = StyleSheet.create({
   stat: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
   },
 
   statNumber: {
@@ -1152,6 +1260,13 @@ const styles = StyleSheet.create({
 
   statLabel: {
     color: '#596579',
+    fontSize: 7,
+    fontWeight: '900',
+    marginTop: 5,
+  },
+
+  statLabelActive: {
+    color: '#8ECAFF',
     fontSize: 7,
     fontWeight: '900',
     marginTop: 5,

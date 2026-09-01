@@ -2,15 +2,15 @@ import { useFocusEffect } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import { supabase } from '../../lib/supabase';
@@ -76,6 +76,12 @@ export default function UserProfileScreen() {
   const [followLoading, setFollowLoading] =
     useState(false);
 
+  const [safetyLoading, setSafetyLoading] =
+    useState(false);
+
+  const [isBlocked, setIsBlocked] =
+    useState(false);
+
   const loadProfile = useCallback(
     async () => {
       if (!targetUserId) {
@@ -84,11 +90,9 @@ export default function UserProfileScreen() {
       }
 
       setLoading(true);
+      setIsBlocked(false);
 
       try {
-        /*
-         * ログイン中ユーザー
-         */
         const {
           data: { user },
           error: authError,
@@ -99,12 +103,57 @@ export default function UserProfileScreen() {
             'USER PROFILE AUTH ERROR:',
             authError,
           );
-
-          setLoading(false);
           return;
         }
 
         setCurrentUserId(user.id);
+
+        /*
+         * BLOCK状態を最初に確認
+         *
+         * 自分 → 相手
+         * 相手 → 自分
+         *
+         * どちらか一方でも存在すれば
+         * プロフィールを表示しない。
+         */
+        if (user.id !== targetUserId) {
+          const {
+            data: blockData,
+            error: blockError,
+          } = await supabase
+            .from('blocks')
+            .select(
+              `
+                id,
+                blocker_id,
+                blocked_id
+              `,
+            )
+            .or(
+              `and(blocker_id.eq.${user.id},blocked_id.eq.${targetUserId}),and(blocker_id.eq.${targetUserId},blocked_id.eq.${user.id})`,
+            )
+            .limit(1);
+
+          if (blockError) {
+            console.log(
+              'BLOCK STATUS ERROR:',
+              blockError,
+            );
+          }
+
+          if (
+            !blockError &&
+            blockData &&
+            blockData.length > 0
+          ) {
+            setIsBlocked(true);
+            setProfile(null);
+            setCompletions([]);
+            setNextQuest(null);
+            return;
+          }
+        }
 
         /*
          * 相手プロフィール
@@ -152,12 +201,6 @@ export default function UserProfileScreen() {
 
         /*
          * 相手のNEXT QUEST
-         *
-         * 今は相手のadventure_typeに
-         * 合うQuestを1件表示。
-         *
-         * 後でHomeの「現在のQuest」と
-         * 完全同期させる。
          */
         const adventureType =
           loadedProfile.adventure_type
@@ -371,7 +414,8 @@ export default function UserProfileScreen() {
       !currentUserId ||
       !targetUserId ||
       currentUserId === targetUserId ||
-      followLoading
+      followLoading ||
+      safetyLoading
     ) {
       return;
     }
@@ -379,6 +423,44 @@ export default function UserProfileScreen() {
     setFollowLoading(true);
 
     try {
+      /*
+       * FOLLOW直前にもBLOCK状態を確認。
+       */
+      const {
+        data: blockData,
+        error: blockError,
+      } = await supabase
+        .from('blocks')
+        .select('id')
+        .or(
+          `and(blocker_id.eq.${currentUserId},blocked_id.eq.${targetUserId}),and(blocker_id.eq.${targetUserId},blocked_id.eq.${currentUserId})`,
+        )
+        .limit(1);
+
+      if (blockError) {
+        console.log(
+          'FOLLOW BLOCK CHECK ERROR:',
+          blockError,
+        );
+
+        Alert.alert(
+          'エラー',
+          '処理に失敗しました。',
+        );
+        return;
+      }
+
+      if (
+        blockData &&
+        blockData.length > 0
+      ) {
+        Alert.alert(
+          'フォローできません',
+          'このユーザーとは現在やり取りできません。',
+        );
+        return;
+      }
+
       if (isFollowing) {
         const { error } =
           await supabase
@@ -458,6 +540,218 @@ export default function UserProfileScreen() {
     }
   };
 
+  /*
+   * REPORT
+   */
+  const submitReport = async (
+    reason: string,
+  ) => {
+    if (
+      !currentUserId ||
+      !targetUserId ||
+      currentUserId === targetUserId ||
+      safetyLoading
+    ) {
+      return;
+    }
+
+    setSafetyLoading(true);
+
+    try {
+      const { error } =
+        await supabase
+          .from('reports')
+          .insert({
+            reporter_id:
+              currentUserId,
+            reported_user_id:
+              targetUserId,
+            reason,
+          });
+
+      if (error) {
+        console.log(
+          'REPORT ERROR:',
+          error,
+        );
+
+        Alert.alert(
+          'エラー',
+          '報告を送信できませんでした。',
+        );
+
+        return;
+      }
+
+      Alert.alert(
+        '報告しました',
+        'ご報告ありがとうございます。内容を確認します。',
+      );
+    } catch (error) {
+      console.log(
+        'REPORT ACTION ERROR:',
+        error,
+      );
+
+      Alert.alert(
+        'エラー',
+        '報告を送信できませんでした。',
+      );
+    } finally {
+      setSafetyLoading(false);
+    }
+  };
+
+  const handleReport = () => {
+    if (
+      !currentUserId ||
+      !targetUserId ||
+      currentUserId === targetUserId ||
+      safetyLoading
+    ) {
+      return;
+    }
+
+    Alert.alert(
+      'ユーザーを報告',
+      '報告する理由を選択してください。',
+      [
+        {
+          text: '不適切なコンテンツ',
+          onPress: () =>
+            submitReport(
+              'inappropriate_content',
+            ),
+        },
+        {
+          text: '嫌がらせ',
+          onPress: () =>
+            submitReport(
+              'harassment',
+            ),
+        },
+        {
+          text: 'スパム',
+          onPress: () =>
+            submitReport(
+              'spam',
+            ),
+        },
+        {
+          text: 'その他',
+          onPress: () =>
+            submitReport(
+              'other',
+            ),
+        },
+        {
+          text: 'キャンセル',
+          style: 'cancel',
+        },
+      ],
+    );
+  };
+
+  /*
+   * BLOCK
+   */
+  const executeBlock = async () => {
+    if (
+      !currentUserId ||
+      !targetUserId ||
+      currentUserId === targetUserId ||
+      safetyLoading
+    ) {
+      return;
+    }
+
+    setSafetyLoading(true);
+
+    try {
+      const { error } =
+        await supabase
+          .from('blocks')
+          .insert({
+            blocker_id:
+              currentUserId,
+            blocked_id:
+              targetUserId,
+          });
+
+      if (error) {
+        console.log(
+          'BLOCK ERROR:',
+          error,
+        );
+
+        /*
+         * 二重タップなどで既にBLOCK済みの場合も
+         * 安全側に倒してプロフィールから戻す。
+         */
+        if (error.code === '23505') {
+          setIsBlocked(true);
+          router.back();
+          return;
+        }
+
+        Alert.alert(
+          'エラー',
+          'ブロックできませんでした。',
+        );
+
+        return;
+      }
+
+      /*
+       * DBトリガー側で
+       * 双方向のFOLLOWが自動削除される。
+       */
+      setIsFollowing(false);
+      setIsBlocked(true);
+
+      router.back();
+    } catch (error) {
+      console.log(
+        'BLOCK ACTION ERROR:',
+        error,
+      );
+
+      Alert.alert(
+        'エラー',
+        'ブロックできませんでした。',
+      );
+    } finally {
+      setSafetyLoading(false);
+    }
+  };
+
+  const handleBlock = () => {
+    if (
+      !currentUserId ||
+      !targetUserId ||
+      currentUserId === targetUserId ||
+      safetyLoading
+    ) {
+      return;
+    }
+
+    Alert.alert(
+      'このユーザーをブロックしますか？',
+      'お互いのフォローが解除され、このユーザーとのやり取りが制限されます。',
+      [
+        {
+          text: 'キャンセル',
+          style: 'cancel',
+        },
+        {
+          text: 'ブロック',
+          style: 'destructive',
+          onPress: executeBlock,
+        },
+      ],
+    );
+  };
+
   const getQuest = (
     completion: Completion,
   ) => {
@@ -506,6 +800,46 @@ export default function UserProfileScreen() {
           >
             LOADING PROFILE...
           </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /*
+   * BLOCKされている関係
+   */
+  if (isBlocked) {
+    return (
+      <SafeAreaView
+        style={styles.container}
+      >
+        <View style={styles.center}>
+          <Text
+            style={styles.notFoundTitle}
+          >
+            PROFILE UNAVAILABLE
+          </Text>
+
+          <Text
+            style={styles.blockedMessage}
+          >
+            このプロフィールは表示できません。
+          </Text>
+
+          <Pressable
+            style={styles.backHomeButton}
+            onPress={() =>
+              router.back()
+            }
+          >
+            <Text
+              style={
+                styles.backHomeText
+              }
+            >
+              ← BACK
+            </Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );
@@ -632,41 +966,101 @@ export default function UserProfileScreen() {
           </View>
         </View>
 
-        {/* FOLLOW */}
+        {/* FOLLOW + SAFETY */}
 
         {!isOwnProfile && (
-          <Pressable
-            style={[
-              styles.followButton,
-              isFollowing &&
-                styles.followingButton,
-            ]}
-            onPress={handleFollow}
-            disabled={followLoading}
-          >
-            {followLoading ? (
-              <ActivityIndicator
-                size="small"
-                color={
-                  isFollowing
-                    ? '#FFFFFF'
-                    : '#080B12'
+          <>
+            <Pressable
+              style={[
+                styles.followButton,
+                isFollowing &&
+                  styles.followingButton,
+              ]}
+              onPress={handleFollow}
+              disabled={
+                followLoading ||
+                safetyLoading
+              }
+            >
+              {followLoading ? (
+                <ActivityIndicator
+                  size="small"
+                  color={
+                    isFollowing
+                      ? '#FFFFFF'
+                      : '#080B12'
+                  }
+                />
+              ) : (
+                <Text
+                  style={[
+                    styles.followButtonText,
+                    isFollowing &&
+                      styles.followingButtonText,
+                  ]}
+                >
+                  {isFollowing
+                    ? 'FOLLOWING'
+                    : 'FOLLOW'}
+                </Text>
+              )}
+            </Pressable>
+
+            <View
+              style={styles.safetyRow}
+            >
+              <Pressable
+                style={
+                  styles.safetyButton
+                }
+                onPress={handleReport}
+                disabled={safetyLoading}
+              >
+                <Text
+                  style={
+                    styles.reportText
+                  }
+                >
+                  REPORT
+                </Text>
+              </Pressable>
+
+              <View
+                style={
+                  styles.safetyDivider
                 }
               />
-            ) : (
-              <Text
-                style={[
-                  styles.followButtonText,
-                  isFollowing &&
-                    styles.followingButtonText,
-                ]}
+
+              <Pressable
+                style={
+                  styles.safetyButton
+                }
+                onPress={handleBlock}
+                disabled={safetyLoading}
               >
-                {isFollowing
-                  ? 'FOLLOWING'
-                  : 'FOLLOW'}
-              </Text>
+                <Text
+                  style={
+                    styles.blockText
+                  }
+                >
+                  BLOCK
+                </Text>
+              </Pressable>
+            </View>
+
+            {safetyLoading && (
+              <View
+                style={
+                  styles.safetyLoading
+                }
+              >
+                <ActivityIndicator
+                  size="small"
+                  color="#687386"
+                />
+              </View>
             )}
-          </Pressable>
+          </>
         )}
 
         {/* COUNTS */}
@@ -1072,6 +1466,14 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 
+  blockedMessage: {
+    color: '#687386',
+    fontSize: 11,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+
   backHomeButton: {
     marginTop: 25,
   },
@@ -1177,6 +1579,43 @@ const styles = StyleSheet.create({
 
   followingButtonText: {
     color: '#FFFFFF',
+  },
+
+  safetyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+
+  safetyButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+
+  safetyDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: '#293345',
+  },
+
+  reportText: {
+    color: '#687386',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+
+  blockText: {
+    color: '#A66B72',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+
+  safetyLoading: {
+    alignItems: 'center',
+    marginTop: 5,
   },
 
   stats: {

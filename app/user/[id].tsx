@@ -545,6 +545,7 @@ export default function UserProfileScreen() {
    */
   const submitReport = async (
     reason: string,
+    details: string = '',
   ) => {
     if (
       !currentUserId ||
@@ -567,6 +568,8 @@ export default function UserProfileScreen() {
             reported_user_id:
               targetUserId,
             reason,
+            details:
+              details.trim() || null,
           });
 
       if (error) {
@@ -602,6 +605,31 @@ export default function UserProfileScreen() {
     }
   };
 
+  const requestReportDetails = (
+    reason: string,
+  ) => {
+    Alert.prompt(
+      '詳細を入力',
+      '必要に応じて、報告したい内容を入力してください。\n例：QUEST #025の投稿写真について',
+      [
+        {
+          text: 'キャンセル',
+          style: 'cancel',
+        },
+        {
+          text: '送信',
+          onPress: (details?: string) =>
+            submitReport(
+              reason,
+              details ?? '',
+            ),
+        },
+      ],
+      'plain-text',
+      '',
+    );
+  };
+
   const handleReport = () => {
     if (
       !currentUserId ||
@@ -619,28 +647,28 @@ export default function UserProfileScreen() {
         {
           text: '不適切なコンテンツ',
           onPress: () =>
-            submitReport(
+            requestReportDetails(
               'inappropriate_content',
             ),
         },
         {
           text: '嫌がらせ',
           onPress: () =>
-            submitReport(
+            requestReportDetails(
               'harassment',
             ),
         },
         {
           text: 'スパム',
           onPress: () =>
-            submitReport(
+            requestReportDetails(
               'spam',
             ),
         },
         {
           text: 'その他',
           onPress: () =>
-            submitReport(
+            requestReportDetails(
               'other',
             ),
         },

@@ -1,10 +1,10 @@
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import React, {
   useCallback,
   useMemo,
   useState,
 } from 'react';
-
 import {
   ActivityIndicator,
   Image,
@@ -16,8 +16,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-
-import { useFocusEffect } from '@react-navigation/native';
 
 import { supabase } from '../../lib/supabase';
 
@@ -48,6 +46,11 @@ type FriendCompletion = {
   quest: Quest;
 };
 
+type BlockRow = {
+  blocker_id: string;
+  blocked_id: string;
+};
+
 type ExploreMode = 'friends' | 'users';
 
 export default function ExploreScreen() {
@@ -73,22 +76,90 @@ export default function ExploreScreen() {
     useState('');
 
   /*
+   * 自分とブロック関係にある
+   * 全ユーザーIDを取得する。
+   *
+   * ・自分がブロックした相手
+   * ・自分をブロックした相手
+   *
+   * 両方を除外対象にする。
+   */
+  const getBlockedUserIds =
+    useCallback(
+      async (
+        myUserId: string,
+      ): Promise<string[]> => {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('blocks')
+          .select(
+            `
+              blocker_id,
+              blocked_id
+            `,
+          )
+          .or(
+            `blocker_id.eq.${myUserId},blocked_id.eq.${myUserId}`,
+          );
+
+        if (error) {
+          console.log(
+            'EXPLORE BLOCK ERROR:',
+            error,
+          );
+
+          throw error;
+        }
+
+        const rows =
+          (data ?? []) as BlockRow[];
+
+        const blockedIds = rows
+          .map((row) => {
+            if (
+              row.blocker_id ===
+              myUserId
+            ) {
+              return row.blocked_id;
+            }
+
+            return row.blocker_id;
+          })
+          .filter(
+            (id) =>
+              Boolean(id) &&
+              id !== myUserId,
+          );
+
+        return [
+          ...new Set(blockedIds),
+        ];
+      },
+      [],
+    );
+
+  /*
    * FRIENDS FEED
    *
    * 1. ログイン中ユーザー取得
-   * 2. followsからフォロー中ユーザー取得
-   * 3. その人たちのCLEAR取得
-   * 4. profile / quest情報を合体
+   * 2. ブロック関係ユーザー取得
+   * 3. followsからフォロー中ユーザー取得
+   * 4. ブロック関係ユーザーを除外
+   * 5. その人たちのCLEAR取得
+   * 6. profile / quest情報を合体
    */
-  const loadFriendsFeed = useCallback(
-    async () => {
+  const loadFriendsFeed =
+    useCallback(async () => {
       setLoadingFriends(true);
 
       try {
         const {
           data: { user },
           error: userError,
-        } = await supabase.auth.getUser();
+        } =
+          await supabase.auth.getUser();
 
         if (userError || !user) {
           console.log(
@@ -97,11 +168,22 @@ export default function ExploreScreen() {
           );
 
           setCurrentUserId(null);
-          setFriendCompletions([]);
+          setFriendCompletions(
+            [],
+          );
+
           return;
         }
 
         setCurrentUserId(user.id);
+
+        const blockedUserIds =
+          await getBlockedUserIds(
+            user.id,
+          );
+
+        const blockedSet =
+          new Set(blockedUserIds);
 
         const {
           data: follows,
@@ -109,7 +191,10 @@ export default function ExploreScreen() {
         } = await supabase
           .from('follows')
           .select('following_id')
-          .eq('follower_id', user.id);
+          .eq(
+            'follower_id',
+            user.id,
+          );
 
         if (followError) {
           console.log(
@@ -117,18 +202,32 @@ export default function ExploreScreen() {
             followError,
           );
 
-          setFriendCompletions([]);
+          setFriendCompletions(
+            [],
+          );
+
           return;
         }
 
         const followingIds = (
           follows ?? []
-        ).map(
-          (follow) => follow.following_id,
-        );
+        )
+          .map(
+            (follow) =>
+              follow.following_id,
+          )
+          .filter(
+            (id) =>
+              !blockedSet.has(id),
+          );
 
-        if (followingIds.length === 0) {
-          setFriendCompletions([]);
+        if (
+          followingIds.length === 0
+        ) {
+          setFriendCompletions(
+            [],
+          );
+
           return;
         }
 
@@ -136,7 +235,9 @@ export default function ExploreScreen() {
           data: completions,
           error: completionError,
         } = await supabase
-          .from('quest_completions')
+          .from(
+            'quest_completions',
+          )
           .select(
             `
               id,
@@ -147,10 +248,16 @@ export default function ExploreScreen() {
               completed_at
             `,
           )
-          .in('user_id', followingIds)
-          .order('completed_at', {
-            ascending: false,
-          });
+          .in(
+            'user_id',
+            followingIds,
+          )
+          .order(
+            'completed_at',
+            {
+              ascending: false,
+            },
+          );
 
         if (completionError) {
           console.log(
@@ -158,7 +265,10 @@ export default function ExploreScreen() {
             completionError,
           );
 
-          setFriendCompletions([]);
+          setFriendCompletions(
+            [],
+          );
+
           return;
         }
 
@@ -166,7 +276,10 @@ export default function ExploreScreen() {
           !completions ||
           completions.length === 0
         ) {
-          setFriendCompletions([]);
+          setFriendCompletions(
+            [],
+          );
+
           return;
         }
 
@@ -225,13 +338,18 @@ export default function ExploreScreen() {
             ),
         ]);
 
-        if (profileResult.error) {
+        if (
+          profileResult.error
+        ) {
           console.log(
             'EXPLORE PROFILE ERROR:',
             profileResult.error,
           );
 
-          setFriendCompletions([]);
+          setFriendCompletions(
+            [],
+          );
+
           return;
         }
 
@@ -241,77 +359,102 @@ export default function ExploreScreen() {
             questResult.error,
           );
 
-          setFriendCompletions([]);
+          setFriendCompletions(
+            [],
+          );
+
           return;
         }
 
-        const profileMap = new Map(
-          (profileResult.data ?? []).map(
-            (profile) => [
+        const profileMap =
+          new Map(
+            (
+              profileResult.data ??
+              []
+            ).map((profile) => [
               profile.id,
               profile as Profile,
-            ],
-          ),
-        );
-
-        const questMap = new Map(
-          (questResult.data ?? []).map(
-            (quest) => [
-              quest.id,
-              quest as Quest,
-            ],
-          ),
-        );
-
-        const result = completions
-          .map((completion) => {
-            const profile =
-              profileMap.get(
-                completion.user_id,
-              );
-
-            const quest =
-              questMap.get(
-                completion.quest_id,
-              );
-
-            if (!profile || !quest) {
-              return null;
-            }
-
-            return {
-              ...completion,
-              profile,
-              quest,
-            };
-          })
-          .filter(
-            (
-              item,
-            ): item is FriendCompletion =>
-              item !== null,
+            ]),
           );
 
-        setFriendCompletions(result);
+        const questMap = new Map(
+          (
+            questResult.data ?? []
+          ).map((quest) => [
+            quest.id,
+            quest as Quest,
+          ]),
+        );
+
+        const result =
+          completions
+            .map((completion) => {
+              /*
+               * 念のため、
+               * CLEAR側でも
+               * ブロックユーザーを
+               * 再チェック。
+               */
+              if (
+                blockedSet.has(
+                  completion.user_id,
+                )
+              ) {
+                return null;
+              }
+
+              const profile =
+                profileMap.get(
+                  completion.user_id,
+                );
+
+              const quest =
+                questMap.get(
+                  completion.quest_id,
+                );
+
+              if (
+                !profile ||
+                !quest
+              ) {
+                return null;
+              }
+
+              return {
+                ...completion,
+                profile,
+                quest,
+              };
+            })
+            .filter(
+              (
+                item,
+              ): item is FriendCompletion =>
+                item !== null,
+            );
+
+        setFriendCompletions(
+          result,
+        );
       } catch (error) {
         console.log(
           'EXPLORE FRIENDS ERROR:',
           error,
         );
 
-        setFriendCompletions([]);
+        setFriendCompletions(
+          [],
+        );
       } finally {
         setLoadingFriends(false);
       }
-    },
-    [],
-  );
+    }, [getBlockedUserIds]);
 
   /*
-   * Exploreに戻るたび更新
+   * Exploreに戻るたび更新。
    *
-   * 友達をFOLLOWした直後でも
-   * FRIENDSに反映される。
+   * BLOCK / UNBLOCKした後も
+   * FRIENDSへ反映される。
    */
   useFocusEffect(
     useCallback(() => {
@@ -321,9 +464,17 @@ export default function ExploreScreen() {
 
   /*
    * USERS
+   *
+   * 全プロフィール取得後、
+   *
+   * ・自分
+   * ・自分がブロックした相手
+   * ・自分をブロックした相手
+   *
+   * を除外する。
    */
-  const loadUsers = useCallback(
-    async () => {
+  const loadUsers =
+    useCallback(async () => {
       setLoadingUsers(true);
 
       try {
@@ -333,16 +484,39 @@ export default function ExploreScreen() {
         if (!myUserId) {
           const {
             data: { user },
+            error: userError,
           } =
             await supabase.auth.getUser();
 
-          myUserId =
-            user?.id ?? null;
+          if (
+            userError ||
+            !user
+          ) {
+            console.log(
+              'EXPLORE USERS AUTH ERROR:',
+              userError,
+            );
+
+            setUsers([]);
+            return;
+          }
+
+          myUserId = user.id;
 
           setCurrentUserId(
             myUserId,
           );
         }
+
+        const blockedUserIds =
+          await getBlockedUserIds(
+            myUserId,
+          );
+
+        const blockedSet =
+          new Set(
+            blockedUserIds,
+          );
 
         const {
           data,
@@ -374,13 +548,17 @@ export default function ExploreScreen() {
         }
 
         const profiles =
-          (data ?? []) as Profile[];
+          (data ??
+            []) as Profile[];
 
         setUsers(
           profiles.filter(
             (profile) =>
               profile.id !==
-              myUserId,
+                myUserId &&
+              !blockedSet.has(
+                profile.id,
+              ),
           ),
         );
       } catch (error) {
@@ -393,12 +571,13 @@ export default function ExploreScreen() {
       } finally {
         setLoadingUsers(false);
       }
-    },
-    [currentUserId],
-  );
+    }, [
+      currentUserId,
+      getBlockedUserIds,
+    ]);
 
   /*
-   * USERSタブを開いた時に取得
+   * USERSタブを開いた時に取得。
    */
   React.useEffect(() => {
     if (mode === 'users') {
@@ -762,7 +941,8 @@ export default function ExploreScreen() {
                     {item.photo_url ? (
                       <Image
                         source={{
-                          uri: item.photo_url,
+                          uri:
+                            item.photo_url,
                         }}
                         style={
                           styles.feedPhoto
@@ -1032,7 +1212,8 @@ export default function ExploreScreen() {
                           pathname:
                             '/user/[id]',
                           params: {
-                            id: profile.id,
+                            id:
+                              profile.id,
                           },
                         })
                       }
@@ -1040,7 +1221,8 @@ export default function ExploreScreen() {
                       {profile.avatar_url ? (
                         <Image
                           source={{
-                            uri: profile.avatar_url,
+                            uri:
+                              profile.avatar_url,
                           }}
                           style={
                             styles.avatar

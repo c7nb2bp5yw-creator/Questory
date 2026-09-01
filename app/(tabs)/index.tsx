@@ -189,9 +189,11 @@ export default function HomeScreen() {
   /*
    * NEXT QUEST + OTHER QUESTS
    *
-   * 今は同じadventure_typeから4件取得。
-   * 1件目 = メイン
-   * 2〜4件目 = OTHER QUESTS
+   * NEXT QUEST
+   * → 自分のadventure_typeに合うQuestを1件
+   *
+   * OTHER QUESTS
+   * → NEXT QUEST以外のQuestから3件
    *
    * CLEAR後の自動切替と
    * SKIP 1日2回制限は後で実装。
@@ -219,6 +221,9 @@ export default function HomeScreen() {
             return;
           }
 
+          /*
+           * ユーザーのadventure_type取得
+           */
           const {
             data: profile,
             error: profileError,
@@ -254,9 +259,12 @@ export default function HomeScreen() {
             return;
           }
 
+          /*
+           * まずNEXT QUESTを1件取得
+           */
           const {
-            data: quests,
-            error: questError,
+            data: recommendedData,
+            error: recommendedError,
           } =
             await supabase
               .from('quests')
@@ -270,12 +278,13 @@ export default function HomeScreen() {
               .order('number', {
                 ascending: false,
               })
-              .limit(4);
+              .limit(1)
+              .maybeSingle();
 
-          if (questError) {
+          if (recommendedError) {
             console.log(
-              'HOME QUEST ERROR:',
-              questError,
+              'HOME RECOMMENDED QUEST ERROR:',
+              recommendedError,
             );
 
             setRecommendedQuest(null);
@@ -283,17 +292,52 @@ export default function HomeScreen() {
             return;
           }
 
-          const loadedQuests =
-            (quests ?? []) as Quest[];
+          const mainQuest =
+            recommendedData as Quest | null;
 
-          setRecommendedQuest(
-            loadedQuests.length > 0
-              ? loadedQuests[0]
-              : null,
-          );
+          setRecommendedQuest(mainQuest);
+
+          /*
+           * NEXT QUEST以外から
+           * OTHER QUESTSを3件取得
+           */
+          let otherQuestQuery =
+            supabase
+              .from('quests')
+              .select(
+                'id, number, title, description, difficulty, estimated_time, adventure_type',
+              )
+              .order('number', {
+                ascending: false,
+              })
+              .limit(3);
+
+          if (mainQuest) {
+            otherQuestQuery =
+              otherQuestQuery.neq(
+                'id',
+                mainQuest.id,
+              );
+          }
+
+          const {
+            data: otherQuestData,
+            error: otherQuestError,
+          } =
+            await otherQuestQuery;
+
+          if (otherQuestError) {
+            console.log(
+              'HOME OTHER QUEST ERROR:',
+              otherQuestError,
+            );
+
+            setOtherQuests([]);
+            return;
+          }
 
           setOtherQuests(
-            loadedQuests.slice(1, 4),
+            (otherQuestData ?? []) as Quest[],
           );
         } catch (error) {
           console.log(

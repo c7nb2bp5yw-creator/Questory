@@ -68,6 +68,59 @@ export default function HomeScreen() {
   const [isLoadingCoOp, setIsLoadingCoOp] =
     useState(true);
 
+  const [hasUnreadNotifications, setHasUnreadNotifications] =
+    useState(false);
+
+  /*
+   * NOTIFICATIONS
+   */
+  const loadUnreadNotifications = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setHasUnreadNotifications(false);
+        return;
+      }
+
+      const {
+        count,
+        error,
+      } = await supabase
+        .from('notifications')
+        .select('id', {
+          count: 'exact',
+          head: true,
+        })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+
+      if (error) {
+        console.log(
+          'UNREAD NOTIFICATIONS ERROR:',
+          error,
+        );
+
+        setHasUnreadNotifications(false);
+        return;
+      }
+
+      setHasUnreadNotifications(
+        (count ?? 0) > 0,
+      );
+    } catch (error) {
+      console.log(
+        'LOAD UNREAD NOTIFICATIONS ERROR:',
+        error,
+      );
+
+      setHasUnreadNotifications(false);
+    }
+  }, []);
+
   /*
    * CO-OP QUESTS
    */
@@ -379,7 +432,12 @@ export default function HomeScreen() {
     useCallback(() => {
       loadJourney();
       loadCoOpQuests();
-    }, [loadJourney, loadCoOpQuests]),
+      loadUnreadNotifications();
+    }, [
+      loadJourney,
+      loadCoOpQuests,
+      loadUnreadNotifications,
+    ]),
   );
 
   /*
@@ -664,13 +722,31 @@ export default function HomeScreen() {
                 )
               }
             >
-              <Text
+              <View
                 style={
-                  styles.notificationIcon
+                  styles.notificationBell
                 }
               >
-                ♢
-              </Text>
+                <View
+                  style={
+                    styles.notificationBellBody
+                  }
+                />
+
+                <View
+                  style={
+                    styles.notificationBellClapper
+                  }
+                />
+
+                {hasUnreadNotifications && (
+                  <View
+                    style={
+                      styles.notificationUnreadDot
+                    }
+                  />
+                )}
+              </View>
             </Pressable>
 
             <View
@@ -1277,8 +1353,46 @@ const styles = StyleSheet.create({
   },
 
   notificationIcon: {
-    color: '#8ECAFF',
+    color: '#FFFFFF',
     fontSize: 19,
+  },
+
+  notificationBell: {
+    width: 22,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  notificationBellBody: {
+    width: 14,
+    height: 15,
+    borderWidth: 1.8,
+    borderColor: '#FFFFFF',
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 5,
+    borderBottomRightRadius: 5,
+  },
+
+  notificationBellClapper: {
+    width: 4,
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: '#FFFFFF',
+    marginTop: 2,
+  },
+
+  notificationUnreadDot: {
+    position: 'absolute',
+    top: 1,
+    right: 0,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#8ECAFF',
+    borderWidth: 1,
+    borderColor: '#080B12',
   },
 
   levelBox: {

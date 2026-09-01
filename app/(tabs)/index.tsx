@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 
 import {
+  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -37,6 +38,14 @@ type Completion = {
   quest: Quest;
 };
 
+type CoOpQuest = {
+  collaborationId: string;
+  ownerId: string;
+  ownerName: string;
+  ownerUsername: string | null;
+  quest: Quest;
+};
+
 export default function HomeScreen() {
   const [recommendedQuest, setRecommendedQuest] =
     useState<Quest | null>(null);
@@ -52,6 +61,192 @@ export default function HomeScreen() {
 
   const [isLoadingJourney, setIsLoadingJourney] =
     useState(true);
+
+  const [coOpQuests, setCoOpQuests] =
+    useState<CoOpQuest[]>([]);
+
+  const [isLoadingCoOp, setIsLoadingCoOp] =
+    useState(true);
+
+  /*
+   * CO-OP QUESTS
+   */
+  const loadCoOpQuests = useCallback(async () => {
+    setIsLoadingCoOp(true);
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        console.log(
+          'CO-OP USER ERROR:',
+          userError,
+        );
+
+        setCoOpQuests([]);
+        return;
+      }
+
+      const {
+        data: collaborations,
+        error: collaborationError,
+      } = await supabase
+        .from('quest_collaborations')
+        .select(
+          'id, owner_id, quest_id',
+        )
+        .eq('collaborator_id', user.id)
+        .not('quest_id', 'is', null)
+        .order('created_at', {
+          ascending: false,
+        });
+
+      if (collaborationError) {
+        console.log(
+          'HOME CO-OP ERROR:',
+          collaborationError,
+        );
+
+        setCoOpQuests([]);
+        return;
+      }
+
+      if (
+        !collaborations ||
+        collaborations.length === 0
+      ) {
+        setCoOpQuests([]);
+        return;
+      }
+
+      const ownerIds = [
+        ...new Set(
+          collaborations.map(
+            (item) => item.owner_id,
+          ),
+        ),
+      ];
+
+      const questIds = [
+        ...new Set(
+          collaborations
+            .map((item) => item.quest_id)
+            .filter(
+              (questId): questId is string =>
+                !!questId,
+            ),
+        ),
+      ];
+
+      const [
+        profileResult,
+        questResult,
+      ] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, name, username')
+          .in('id', ownerIds),
+
+        supabase
+          .from('quests')
+          .select(
+            'id, number, title, description, difficulty, estimated_time, adventure_type',
+          )
+          .in('id', questIds),
+      ]);
+
+      if (profileResult.error) {
+        console.log(
+          'CO-OP PROFILE ERROR:',
+          profileResult.error,
+        );
+      }
+
+      if (questResult.error) {
+        console.log(
+          'CO-OP QUEST ERROR:',
+          questResult.error,
+        );
+      }
+
+      if (
+        profileResult.error ||
+        questResult.error
+      ) {
+        setCoOpQuests([]);
+        return;
+      }
+
+      const profileMap = new Map(
+        (profileResult.data ?? []).map(
+          (profile) => [
+            profile.id,
+            profile,
+          ],
+        ),
+      );
+
+      const questMap = new Map(
+        (questResult.data ?? []).map(
+          (quest) => [
+            quest.id,
+            quest as Quest,
+          ],
+        ),
+      );
+
+      const result = collaborations
+        .map((item) => {
+          if (!item.quest_id) {
+            return null;
+          }
+
+          const owner = profileMap.get(
+            item.owner_id,
+          );
+
+          const quest = questMap.get(
+            item.quest_id,
+          );
+
+          if (!owner || !quest) {
+            return null;
+          }
+
+          return {
+            collaborationId: item.id,
+            ownerId: item.owner_id,
+            ownerName:
+              owner.name ||
+              owner.username ||
+              'ADVENTURER',
+            ownerUsername:
+              owner.username,
+            quest,
+          };
+        })
+        .filter(
+          (
+            item,
+          ): item is CoOpQuest =>
+            item !== null,
+        );
+
+      setCoOpQuests(result);
+    } catch (error) {
+      console.log(
+        'LOAD CO-OP ERROR:',
+        error,
+      );
+
+      setCoOpQuests([]);
+    } finally {
+      setIsLoadingCoOp(false);
+    }
+  }, []);
 
   /*
    * YOUR JOURNEY
@@ -183,7 +378,8 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       loadJourney();
-    }, [loadJourney]),
+      loadCoOpQuests();
+    }, [loadJourney, loadCoOpQuests]),
   );
 
   /*
@@ -362,6 +558,75 @@ export default function HomeScreen() {
         questId: quest.id,
       },
     });
+  };
+
+  /*
+   * CO-OP CANCEL
+   */
+  const cancelCoOp = (
+    collaborationId: string,
+  ) => {
+    Alert.alert(
+      'CO-OPをキャンセルしますか？',
+      'このQUESTへの協力を終了します。',
+      [
+        {
+          text: '戻る',
+          style: 'cancel',
+        },
+        {
+          text: 'CANCEL',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } =
+                await supabase
+                  .from(
+                    'quest_collaborations',
+                  )
+                  .delete()
+                  .eq(
+                    'id',
+                    collaborationId,
+                  );
+
+              if (error) {
+                console.log(
+                  'CO-OP CANCEL ERROR:',
+                  error,
+                );
+
+                Alert.alert(
+                  'エラー',
+                  'CO-OPをキャンセルできませんでした。',
+                );
+
+                return;
+              }
+
+              setCoOpQuests(
+                (current) =>
+                  current.filter(
+                    (item) =>
+                      item.collaborationId !==
+                      collaborationId,
+                  ),
+              );
+            } catch (error) {
+              console.log(
+                'CO-OP CANCEL ACTION ERROR:',
+                error,
+              );
+
+              Alert.alert(
+                'エラー',
+                'CO-OPをキャンセルできませんでした。',
+              );
+            }
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -593,6 +858,106 @@ export default function HomeScreen() {
             )}
           </View>
         </View>
+
+        {/* CO-OP QUESTS */}
+
+        {!isLoadingCoOp &&
+          coOpQuests.length > 0 && (
+            <View
+              style={styles.coOpSection}
+            >
+              <View
+                style={styles.sectionHeader}
+              >
+                <View>
+                  <Text
+                    style={styles.smallLabel}
+                  >
+                    TOGETHER
+                  </Text>
+
+                  <Text
+                    style={styles.sectionTitle}
+                  >
+                    CO-OP QUESTS
+                  </Text>
+                </View>
+
+                <Text
+                  style={styles.sectionCount}
+                >
+                  {coOpQuests.length} QUESTS
+                </Text>
+              </View>
+
+              {coOpQuests.map((item) => (
+                <View
+                  key={item.collaborationId}
+                  style={styles.coOpCard}
+                >
+                  <Text
+                    style={styles.coOpPartner}
+                  >
+                    {item.ownerName}とのQUEST
+                  </Text>
+
+                  <Text
+                    style={styles.coOpNumber}
+                  >
+                    {item.quest.number}
+                  </Text>
+
+                  <Text
+                    style={styles.coOpTitle}
+                  >
+                    {item.quest.title}
+                  </Text>
+
+                  <Text
+                    style={styles.coOpDescription}
+                    numberOfLines={2}
+                  >
+                    {item.quest.description}
+                  </Text>
+
+                  <View
+                    style={styles.coOpActions}
+                  >
+                    <Pressable
+                      style={styles.coOpStartButton}
+                      onPress={() =>
+                        openQuest(item.quest)
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.coOpStartButtonText
+                        }
+                      >
+                        START →
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() =>
+                        cancelCoOp(
+                          item.collaborationId,
+                        )
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.coOpCancelPreview
+                        }
+                      >
+                        CANCEL
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
 
         {/* OTHER QUESTS */}
 
@@ -1080,6 +1445,79 @@ const styles = StyleSheet.create({
     color: '#394456',
     fontSize: 7,
     fontWeight: '800',
+  },
+
+  coOpSection: {
+    marginTop: 32,
+  },
+
+  coOpCard: {
+    backgroundColor: '#0E141E',
+    borderWidth: 1,
+    borderColor: '#293345',
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 10,
+  },
+
+  coOpPartner: {
+    color: '#8ECAFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+
+  coOpNumber: {
+    color: '#596579',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginTop: 14,
+  },
+
+  coOpTitle: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: '900',
+    marginTop: 6,
+  },
+
+  coOpDescription: {
+    color: '#697589',
+    fontSize: 10,
+    lineHeight: 17,
+    marginTop: 7,
+  },
+
+  coOpActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 16,
+  },
+
+  coOpStartButton: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 13,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+
+  coOpStartButtonText: {
+    color: '#080B12',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+
+  coOpCancelPreview: {
+    color: '#596579',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1,
+    paddingVertical: 12,
   },
 
   otherQuestSection: {

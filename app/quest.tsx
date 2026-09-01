@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+
 import { supabase } from '../lib/supabase';
 
 type Quest = {
@@ -22,39 +23,60 @@ type Quest = {
 };
 
 export default function QuestScreen() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, questId } =
+    useLocalSearchParams<{
+      id?: string;
+      questId?: string;
+    }>();
 
-  const [quest, setQuest] = useState<Quest | null>(null);
-  const [started, setStarted] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const targetQuestId = questId ?? id;
+
+  const [quest, setQuest] =
+    useState<Quest | null>(null);
+
+  const [started, setStarted] =
+    useState(false);
+
+  const [isLoading, setIsLoading] =
+    useState(true);
 
   useEffect(() => {
     const loadQuest = async () => {
-      if (!id) {
+      if (!targetQuestId) {
         Alert.alert(
           'エラー',
-          'Questの情報が見つかりませんでした。'
+          'Questの情報が見つかりませんでした。',
         );
+
         setIsLoading(false);
         return;
       }
 
-      const { data, error } = await supabase
-        .from('quests')
-        .select(
-          'id, number, title, description, difficulty, estimated_time, adventure_type'
-        )
-        .eq('id', id)
-        .single();
+      const { data, error } =
+        await supabase
+          .from('quests')
+          .select(
+            'id, number, title, description, difficulty, estimated_time, adventure_type',
+          )
+          .eq('id', targetQuestId)
+          .single();
 
-      console.log('DETAIL QUEST:', data);
-      console.log('DETAIL QUEST ERROR:', error);
+      console.log(
+        'DETAIL QUEST:',
+        data,
+      );
+
+      console.log(
+        'DETAIL QUEST ERROR:',
+        error,
+      );
 
       if (error || !data) {
         Alert.alert(
           'エラー',
-          'Questを読み込めませんでした。'
+          'Questを読み込めませんでした。',
         );
+
         setIsLoading(false);
         return;
       }
@@ -64,13 +86,21 @@ export default function QuestScreen() {
     };
 
     loadQuest();
-  }, [id]);
+  }, [targetQuestId]);
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>
+      <SafeAreaView
+        style={styles.container}
+      >
+        <View
+          style={
+            styles.loadingContainer
+          }
+        >
+          <Text
+            style={styles.loadingText}
+          >
             LOADING QUEST...
           </Text>
         </View>
@@ -80,17 +110,31 @@ export default function QuestScreen() {
 
   if (!quest) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.emptyTitle}>
+      <SafeAreaView
+        style={styles.container}
+      >
+        <View
+          style={
+            styles.loadingContainer
+          }
+        >
+          <Text
+            style={styles.emptyTitle}
+          >
             QUEST NOT FOUND
           </Text>
 
           <Pressable
-            style={styles.backHomeButton}
-            onPress={() => router.back()}
+            style={
+              styles.backHomeButton
+            }
+            onPress={() =>
+              router.back()
+            }
           >
-            <Text style={styles.backHomeText}>
+            <Text
+              style={styles.backHomeText}
+            >
               BACK
             </Text>
           </Pressable>
@@ -100,14 +144,22 @@ export default function QuestScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView
+      style={styles.container}
+    >
+      <ScrollView
+        contentContainerStyle={
+          styles.content
+        }
+      >
 
         <Pressable
           style={styles.backButton}
           onPress={() => router.back()}
         >
-          <Text style={styles.backText}>
+          <Text
+            style={styles.backText}
+          >
             ← BACK
           </Text>
         </Pressable>
@@ -122,7 +174,9 @@ export default function QuestScreen() {
 
         <View style={styles.hero}>
 
-          <Text style={styles.questNumber}>
+          <Text
+            style={styles.questNumber}
+          >
             {quest.number}
           </Text>
 
@@ -130,141 +184,218 @@ export default function QuestScreen() {
             {quest.title}
           </Text>
 
-          <Text style={styles.description}>
+          <Text
+            style={styles.description}
+          >
             {quest.description}
           </Text>
 
         </View>
 
-        <View style={styles.metaCard}>
+        <View
+          style={styles.metaCard}
+        >
 
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>
+          <View
+            style={styles.metaItem}
+          >
+            <Text
+              style={styles.metaLabel}
+            >
               DIFFICULTY
             </Text>
 
-            <Text style={styles.metaValue}>
+            <Text
+              style={styles.metaValue}
+            >
               {quest.difficulty}
             </Text>
           </View>
 
-          <View style={styles.verticalLine} />
+          <View
+            style={styles.verticalLine}
+          />
 
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>
+          <View
+            style={styles.metaItem}
+          >
+            <Text
+              style={styles.metaLabel}
+            >
               TIME
             </Text>
 
-            <Text style={styles.metaValue}>
+            <Text
+              style={styles.metaValue}
+            >
               {quest.estimated_time}
             </Text>
           </View>
 
-          <View style={styles.verticalLine} />
+          <View
+            style={styles.verticalLine}
+          />
 
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>
+          <View
+            style={styles.metaItem}
+          >
+            <Text
+              style={styles.metaLabel}
+            >
               TYPE
             </Text>
 
-            <Text style={styles.metaValue}>
-              SOLO
+            <Text
+              style={styles.metaValue}
+            >
+              {quest.adventure_type}
             </Text>
           </View>
 
         </View>
 
-        <Text style={styles.sectionLabel}>
+        <Text
+          style={styles.sectionLabel}
+        >
           HOW TO CLEAR
         </Text>
 
-        <View style={styles.stepCard}>
+        <View
+          style={styles.stepCard}
+        >
 
           <View style={styles.step}>
 
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>
+            <View
+              style={styles.stepNumber}
+            >
+              <Text
+                style={
+                  styles.stepNumberText
+                }
+              >
                 01
               </Text>
             </View>
 
-            <View style={styles.stepContent}>
-
-              <Text style={styles.stepTitle}>
+            <View
+              style={styles.stepContent}
+            >
+              <Text
+                style={styles.stepTitle}
+              >
                 QUESTに挑戦する
               </Text>
 
-              <Text style={styles.stepText}>
+              <Text
+                style={styles.stepText}
+              >
                 今日のQuestを実際にやってみよう。
                 自分のペースで楽しんでください。
               </Text>
-
             </View>
+
           </View>
 
-          <View style={styles.stepLine} />
+          <View
+            style={styles.stepLine}
+          />
 
           <View style={styles.step}>
 
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>
+            <View
+              style={styles.stepNumber}
+            >
+              <Text
+                style={
+                  styles.stepNumberText
+                }
+              >
                 02
               </Text>
             </View>
 
-            <View style={styles.stepContent}>
-
-              <Text style={styles.stepTitle}>
+            <View
+              style={styles.stepContent}
+            >
+              <Text
+                style={styles.stepTitle}
+              >
                 冒険を楽しむ
               </Text>
 
-              <Text style={styles.stepText}>
+              <Text
+                style={styles.stepText}
+              >
                 普段とは少し違うことをしてみよう。
                 何をするかはあなた次第。
               </Text>
-
             </View>
+
           </View>
 
-          <View style={styles.stepLine} />
+          <View
+            style={styles.stepLine}
+          />
 
           <View style={styles.step}>
 
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>
+            <View
+              style={styles.stepNumber}
+            >
+              <Text
+                style={
+                  styles.stepNumberText
+                }
+              >
                 03
               </Text>
             </View>
 
-            <View style={styles.stepContent}>
-
-              <Text style={styles.stepTitle}>
+            <View
+              style={styles.stepContent}
+            >
+              <Text
+                style={styles.stepTitle}
+              >
                 写真を撮る
               </Text>
 
-              <Text style={styles.stepText}>
+              <Text
+                style={styles.stepText}
+              >
                 冒険の証として、思い出の写真を
                 1枚残してください。
               </Text>
-
             </View>
+
           </View>
 
         </View>
 
-        <View style={styles.warningCard}>
+        <View
+          style={styles.warningCard}
+        >
 
-          <Text style={styles.warningIcon}>
+          <Text
+            style={styles.warningIcon}
+          >
             !
           </Text>
 
-          <View style={styles.warningContent}>
+          <View
+            style={styles.warningContent}
+          >
 
-            <Text style={styles.warningTitle}>
+            <Text
+              style={styles.warningTitle}
+            >
               SAFETY FIRST
             </Text>
 
-            <Text style={styles.warningText}>
+            <Text
+              style={styles.warningText}
+            >
               危険な場所には行かず、
               自分の安全を最優先してください。
             </Text>
@@ -277,28 +408,48 @@ export default function QuestScreen() {
 
           <Pressable
             style={styles.startButton}
-            onPress={() => setStarted(true)}
+            onPress={() =>
+              setStarted(true)
+            }
           >
-            <Text style={styles.startButtonText}>
+            <Text
+              style={
+                styles.startButtonText
+              }
+            >
               START QUEST
             </Text>
           </Pressable>
 
         ) : (
 
-          <View style={styles.startedArea}>
+          <View
+            style={styles.startedArea}
+          >
 
-            <View style={styles.startedCard}>
+            <View
+              style={styles.startedCard}
+            >
 
-              <View style={styles.startedDot} />
+              <View
+                style={styles.startedDot}
+              />
 
               <View>
 
-                <Text style={styles.startedTitle}>
+                <Text
+                  style={
+                    styles.startedTitle
+                  }
+                >
                   QUEST IN PROGRESS
                 </Text>
 
-                <Text style={styles.startedText}>
+                <Text
+                  style={
+                    styles.startedText
+                  }
+                >
                   あなたの冒険が始まりました。
                 </Text>
 
@@ -317,7 +468,11 @@ export default function QuestScreen() {
                 })
               }
             >
-              <Text style={styles.clearButtonText}>
+              <Text
+                style={
+                  styles.clearButtonText
+                }
+              >
                 CLEAR QUEST
               </Text>
             </Pressable>
@@ -326,7 +481,9 @@ export default function QuestScreen() {
 
         )}
 
-        <Text style={styles.footer}>
+        <Text
+          style={styles.footer}
+        >
           YOUR ADVENTURE. YOUR STORY.
         </Text>
 
@@ -336,7 +493,6 @@ export default function QuestScreen() {
 }
 
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
     backgroundColor: '#080B12',
@@ -644,5 +800,4 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 1.5,
   },
-
 });

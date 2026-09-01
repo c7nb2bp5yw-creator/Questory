@@ -23,10 +23,17 @@ type Quest = {
 };
 
 export default function QuestScreen() {
-  const { id, questId } =
+  const {
+    id,
+    questId,
+    questMode,
+    collaborationId,
+  } =
     useLocalSearchParams<{
       id?: string;
       questId?: string;
+      questMode?: 'main' | 'other' | 'coop';
+      collaborationId?: string;
     }>();
 
   const targetQuestId = questId ?? id;
@@ -464,6 +471,12 @@ export default function QuestScreen() {
                   pathname: '/post',
                   params: {
                     questId: quest.id,
+                    ...(questMode
+                      ? { questMode }
+                      : {}),
+                    ...(collaborationId
+                      ? { collaborationId }
+                      : {}),
                   },
                 })
               }

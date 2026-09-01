@@ -26,8 +26,16 @@ type Quest = {
 };
 
 export default function PostScreen() {
-  const { questId } =
-    useLocalSearchParams<{ questId?: string }>();
+  const {
+    questId,
+    questMode,
+    collaborationId,
+  } =
+    useLocalSearchParams<{
+      questId?: string;
+      questMode?: 'main' | 'other' | 'coop';
+      collaborationId?: string;
+    }>();
 
   const [quest, setQuest] = useState<Quest | null>(null);
   const [image, setImage] = useState<string | null>(null);
@@ -227,20 +235,45 @@ export default function PostScreen() {
 
       /*
        * ② CLEAR記録をDBへ保存
+       *
+       * main
+       * → CLEAR保存 + quest_actions + 進捗更新を
+       *   Supabase側でまとめて処理
+       *
+       * other / coop
+       * → 今まで通りCLEARのみ保存
        */
-      const { error: completionError } =
-        await supabase
-          .from('quest_completions')
-          .insert({
-            user_id: user.id,
-            quest_id: quest.id,
-            caption:
+      if (questMode === 'main') {
+        const {
+          error: mainCompletionError,
+        } = await supabase.rpc(
+          'complete_fixed_main_quest',
+          {
+            p_quest_id: quest.id,
+            p_caption:
               caption.trim() || null,
-            photo_url: photoUrl,
-          });
+            p_photo_url: photoUrl,
+          },
+        );
 
-      if (completionError) {
-        throw completionError;
+        if (mainCompletionError) {
+          throw mainCompletionError;
+        }
+      } else {
+        const { error: completionError } =
+          await supabase
+            .from('quest_completions')
+            .insert({
+              user_id: user.id,
+              quest_id: quest.id,
+              caption:
+                caption.trim() || null,
+              photo_url: photoUrl,
+            });
+
+        if (completionError) {
+          throw completionError;
+        }
       }
 
       /*

@@ -426,21 +426,6 @@ export default function HomeScreen() {
   }, []);
 
   /*
-   * Homeに戻るたびにJourneyを更新
-   */
-  useFocusEffect(
-    useCallback(() => {
-      loadJourney();
-      loadCoOpQuests();
-      loadUnreadNotifications();
-    }, [
-      loadJourney,
-      loadCoOpQuests,
-      loadUnreadNotifications,
-    ]),
-  );
-
-  /*
    * NEXT QUEST + OTHER QUESTS
    *
    * NEXT QUEST
@@ -452,9 +437,8 @@ export default function HomeScreen() {
    * CLEAR後の自動切替と
    * SKIP 1日2回制限は後で実装。
    */
-  useEffect(() => {
-    const loadRecommendedQuests =
-      async () => {
+  const loadRecommendedQuests =
+    useCallback(async () => {
         setIsLoadingQuest(true);
 
         try {
@@ -484,7 +468,7 @@ export default function HomeScreen() {
           } =
             await supabase
               .from('profiles')
-              .select('adventure_type')
+              .select('adventure_type, fixed_quest_progress')
               .eq('id', user.id)
               .single();
 
@@ -529,10 +513,10 @@ export default function HomeScreen() {
                 'adventure_type',
                 adventureType,
               )
-              .order('number', {
-                ascending: false,
-              })
-              .limit(1)
+              .eq(
+                'sequence',
+                (profile.fixed_quest_progress ?? 0) + 1,
+              )
               .maybeSingle();
 
           if (recommendedError) {
@@ -604,16 +588,38 @@ export default function HomeScreen() {
         } finally {
           setIsLoadingQuest(false);
         }
-      };
+    }, []);
 
-    loadRecommendedQuests();
-  }, []);
+  /*
+   * Homeに戻るたびに最新データを更新
+   */
+  useFocusEffect(
+    useCallback(() => {
+      loadJourney();
+      loadCoOpQuests();
+      loadUnreadNotifications();
+      loadRecommendedQuests();
+    }, [
+      loadJourney,
+      loadCoOpQuests,
+      loadUnreadNotifications,
+      loadRecommendedQuests,
+    ]),
+  );
 
-  const openQuest = (quest: Quest) => {
+  const openQuest = (
+    quest: Quest,
+    questMode: 'main' | 'other' | 'coop',
+    collaborationId?: string,
+  ) => {
     router.push({
       pathname: '/quest',
       params: {
         questId: quest.id,
+        questMode,
+        ...(collaborationId
+          ? { collaborationId }
+          : {}),
       },
     });
   };
@@ -889,6 +895,7 @@ export default function HomeScreen() {
                   onPress={() =>
                     openQuest(
                       recommendedQuest,
+                      'main',
                     )
                   }
                 >
@@ -1002,7 +1009,11 @@ export default function HomeScreen() {
                     <Pressable
                       style={styles.coOpStartButton}
                       onPress={() =>
-                        openQuest(item.quest)
+                        openQuest(
+                          item.quest,
+                          'coop',
+                          item.collaborationId,
+                        )
                       }
                     >
                       <Text
@@ -1084,7 +1095,10 @@ export default function HomeScreen() {
                       styles.otherQuestCard
                     }
                     onPress={() =>
-                      openQuest(quest)
+                      openQuest(
+                        quest,
+                        'other',
+                      )
                     }
                   >
                     <View

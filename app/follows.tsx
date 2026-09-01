@@ -1,22 +1,22 @@
 import {
-    router,
-    useLocalSearchParams,
+  router,
+  useLocalSearchParams,
 } from 'expo-router';
 import React, {
-    useCallback,
-    useEffect,
-    useState,
+  useCallback,
+  useEffect,
+  useState,
 } from 'react';
 
 import {
-    ActivityIndicator,
-    Image,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Image,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import { supabase } from '../lib/supabase';
@@ -31,6 +31,11 @@ type UserProfile = {
   username: string | null;
   avatar_url: string | null;
   adventure_type: string | null;
+};
+
+type BlockRow = {
+  blocker_id: string;
+  blocked_id: string;
 };
 
 export default function FollowsScreen() {
@@ -54,6 +59,69 @@ export default function FollowsScreen() {
     useState('');
 
   /*
+   * 自分とブロック関係にある
+   * ユーザーIDを全部取得
+   *
+   * ・自分がブロックした相手
+   * ・自分をブロックした相手
+   */
+  const getBlockedUserIds =
+    useCallback(
+      async (
+        myUserId: string,
+      ): Promise<string[]> => {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('blocks')
+          .select(
+            `
+              blocker_id,
+              blocked_id
+            `,
+          )
+          .or(
+            `blocker_id.eq.${myUserId},blocked_id.eq.${myUserId}`,
+          );
+
+        if (error) {
+          console.log(
+            'FOLLOWS BLOCK ERROR:',
+            error,
+          );
+
+          throw error;
+        }
+
+        const rows =
+          (data ?? []) as BlockRow[];
+
+        const blockedIds = rows
+          .map((row) => {
+            if (
+              row.blocker_id ===
+              myUserId
+            ) {
+              return row.blocked_id;
+            }
+
+            return row.blocker_id;
+          })
+          .filter(
+            (id) =>
+              Boolean(id) &&
+              id !== myUserId,
+          );
+
+        return [
+          ...new Set(blockedIds),
+        ];
+      },
+      [],
+    );
+
+  /*
    * FOLLOWERS / FOLLOWING LOAD
    */
   const loadUsers =
@@ -65,7 +133,8 @@ export default function FollowsScreen() {
         const {
           data: { user },
           error: userError,
-        } = await supabase.auth.getUser();
+        } =
+          await supabase.auth.getUser();
 
         if (userError || !user) {
           console.log(
@@ -74,12 +143,26 @@ export default function FollowsScreen() {
           );
 
           setUsers([]);
+
           setErrorMessage(
             'ログイン情報を確認できませんでした。',
           );
 
           return;
         }
+
+        /*
+         * ブロック関係にある相手を取得
+         */
+        const blockedUserIds =
+          await getBlockedUserIds(
+            user.id,
+          );
+
+        const blockedSet =
+          new Set(
+            blockedUserIds,
+          );
 
         /*
          * FOLLOWERS
@@ -90,7 +173,9 @@ export default function FollowsScreen() {
          * ↓
          * follower_id を取得
          */
-        if (mode === 'followers') {
+        if (
+          mode === 'followers'
+        ) {
           const {
             data: followRows,
             error: followError,
@@ -101,9 +186,12 @@ export default function FollowsScreen() {
               'following_id',
               user.id,
             )
-            .order('created_at', {
-              ascending: false,
-            });
+            .order(
+              'created_at',
+              {
+                ascending: false,
+              },
+            );
 
           if (followError) {
             console.log(
@@ -112,6 +200,7 @@ export default function FollowsScreen() {
             );
 
             setUsers([]);
+
             setErrorMessage(
               'フォロワーを読み込めませんでした。',
             );
@@ -119,13 +208,27 @@ export default function FollowsScreen() {
             return;
           }
 
-          const userIds =
-            (followRows ?? []).map(
+          /*
+           * ブロック関係ユーザーを
+           * FOLLOWERSから除外
+           */
+          const userIds = (
+            followRows ?? []
+          )
+            .map(
               (row) =>
                 row.follower_id,
+            )
+            .filter(
+              (id) =>
+                !blockedSet.has(
+                  id,
+                ),
             );
 
-          if (userIds.length === 0) {
+          if (
+            userIds.length === 0
+          ) {
             setUsers([]);
             return;
           }
@@ -144,7 +247,10 @@ export default function FollowsScreen() {
                 adventure_type
               `,
             )
-            .in('id', userIds);
+            .in(
+              'id',
+              userIds,
+            );
 
           if (profilesError) {
             console.log(
@@ -153,6 +259,7 @@ export default function FollowsScreen() {
             );
 
             setUsers([]);
+
             setErrorMessage(
               'プロフィールを読み込めませんでした。',
             );
@@ -165,7 +272,9 @@ export default function FollowsScreen() {
            */
           const profileMap =
             new Map(
-              (profiles ?? []).map(
+              (
+                profiles ?? []
+              ).map(
                 (profile) => [
                   profile.id,
                   profile,
@@ -176,16 +285,21 @@ export default function FollowsScreen() {
           const sortedUsers =
             userIds
               .map((id) =>
-                profileMap.get(id),
+                profileMap.get(
+                  id,
+                ),
               )
               .filter(
                 (
                   profile,
                 ): profile is UserProfile =>
-                  profile !== undefined,
+                  profile !==
+                  undefined,
               );
 
-          setUsers(sortedUsers);
+          setUsers(
+            sortedUsers,
+          );
 
           return;
         }
@@ -209,9 +323,12 @@ export default function FollowsScreen() {
             'follower_id',
             user.id,
           )
-          .order('created_at', {
-            ascending: false,
-          });
+          .order(
+            'created_at',
+            {
+              ascending: false,
+            },
+          );
 
         if (followError) {
           console.log(
@@ -220,6 +337,7 @@ export default function FollowsScreen() {
           );
 
           setUsers([]);
+
           setErrorMessage(
             'フォロー中のユーザーを読み込めませんでした。',
           );
@@ -227,13 +345,27 @@ export default function FollowsScreen() {
           return;
         }
 
-        const userIds =
-          (followRows ?? []).map(
+        /*
+         * ブロック関係ユーザーを
+         * FOLLOWINGから除外
+         */
+        const userIds = (
+          followRows ?? []
+        )
+          .map(
             (row) =>
               row.following_id,
+          )
+          .filter(
+            (id) =>
+              !blockedSet.has(
+                id,
+              ),
           );
 
-        if (userIds.length === 0) {
+        if (
+          userIds.length === 0
+        ) {
           setUsers([]);
           return;
         }
@@ -252,7 +384,10 @@ export default function FollowsScreen() {
               adventure_type
             `,
           )
-          .in('id', userIds);
+          .in(
+            'id',
+            userIds,
+          );
 
         if (profilesError) {
           console.log(
@@ -261,6 +396,7 @@ export default function FollowsScreen() {
           );
 
           setUsers([]);
+
           setErrorMessage(
             'プロフィールを読み込めませんでした。',
           );
@@ -273,7 +409,9 @@ export default function FollowsScreen() {
          */
         const profileMap =
           new Map(
-            (profiles ?? []).map(
+            (
+              profiles ?? []
+            ).map(
               (profile) => [
                 profile.id,
                 profile,
@@ -290,10 +428,13 @@ export default function FollowsScreen() {
               (
                 profile,
               ): profile is UserProfile =>
-                profile !== undefined,
+                profile !==
+                undefined,
             );
 
-        setUsers(sortedUsers);
+        setUsers(
+          sortedUsers,
+        );
       } catch (error) {
         console.log(
           'FOLLOWS CATCH ERROR:',
@@ -301,13 +442,17 @@ export default function FollowsScreen() {
         );
 
         setUsers([]);
+
         setErrorMessage(
           'ユーザー一覧の読み込みに失敗しました。',
         );
       } finally {
         setIsLoading(false);
       }
-    }, [mode]);
+    }, [
+      mode,
+      getBlockedUserIds,
+    ]);
 
   useEffect(() => {
     loadUsers();
@@ -461,111 +606,122 @@ export default function FollowsScreen() {
             </Text>
           </View>
 
-          {users.map((profile) => {
-            const displayName =
-              profile.name?.trim() ||
-              'QUESTER';
+          {users.map(
+            (profile) => {
+              const displayName =
+                profile.name?.trim() ||
+                'QUESTER';
 
-            const username =
-              profile.username?.trim();
+              const username =
+                profile.username?.trim();
 
-            return (
-              <Pressable
-                key={profile.id}
-                style={
-                  styles.userCard
-                }
-                onPress={() =>
-                  router.push({
-                    pathname:
-                      '/user/[id]',
-                    params: {
-                      id: profile.id,
-                    },
-                  })
-                }
-              >
-                <View
-                  style={styles.avatar}
-                >
-                  {profile.avatar_url ? (
-                    <Image
-                      source={{
-                        uri:
-                          profile.avatar_url,
-                      }}
-                      style={
-                        styles.avatarImage
-                      }
-                    />
-                  ) : (
-                    <Text
-                      style={
-                        styles.avatarText
-                      }
-                    >
-                      {displayName
-                        .charAt(0)
-                        .toUpperCase()}
-                    </Text>
-                  )}
-                </View>
-
-                <View
+              return (
+                <Pressable
+                  key={profile.id}
                   style={
-                    styles.userInfo
+                    styles.userCard
+                  }
+                  onPress={() =>
+                    router.push({
+                      pathname:
+                        '/user/[id]',
+                      params: {
+                        id:
+                          profile.id,
+                      },
+                    })
                   }
                 >
-                  <Text
+                  <View
                     style={
-                      styles.userName
+                      styles.avatar
                     }
-                    numberOfLines={1}
                   >
-                    {displayName}
-                  </Text>
+                    {profile.avatar_url ? (
+                      <Image
+                        source={{
+                          uri:
+                            profile.avatar_url,
+                        }}
+                        style={
+                          styles.avatarImage
+                        }
+                      />
+                    ) : (
+                      <Text
+                        style={
+                          styles.avatarText
+                        }
+                      >
+                        {displayName
+                          .charAt(0)
+                          .toUpperCase()}
+                      </Text>
+                    )}
+                  </View>
 
-                  <Text
+                  <View
                     style={
-                      styles.userId
+                      styles.userInfo
                     }
-                    numberOfLines={1}
                   >
-                    {username
-                      ? `@${username}`
-                      : '@quester'}
-                  </Text>
-
-                  {profile.adventure_type ? (
                     <Text
                       style={
-                        styles.adventureType
+                        styles.userName
                       }
-                      numberOfLines={1}
+                      numberOfLines={
+                        1
+                      }
                     >
-                      {
-                        profile.adventure_type
-                      }
+                      {displayName}
                     </Text>
-                  ) : null}
-                </View>
 
-                <View
-                  style={
-                    styles.arrowBox
-                  }
-                >
-                  <Text
+                    <Text
+                      style={
+                        styles.userId
+                      }
+                      numberOfLines={
+                        1
+                      }
+                    >
+                      {username
+                        ? `@${username}`
+                        : '@quester'}
+                    </Text>
+
+                    {profile.adventure_type ? (
+                      <Text
+                        style={
+                          styles.adventureType
+                        }
+                        numberOfLines={
+                          1
+                        }
+                      >
+                        {
+                          profile.adventure_type
+                        }
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  <View
                     style={
-                      styles.arrow
+                      styles.arrowBox
                     }
                   >
-                    →
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
+                    <Text
+                      style={
+                        styles.arrow
+                      }
+                    >
+                      →
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            },
+          )}
         </ScrollView>
       )}
     </SafeAreaView>

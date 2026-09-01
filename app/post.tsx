@@ -1,23 +1,87 @@
 import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
-import React, { useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    Image,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  Alert,
+  Image,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 
+import { supabase } from '../lib/supabase';
+
+type Quest = {
+  id: string;
+  number: string;
+  title: string;
+  description: string;
+  difficulty: string;
+  estimated_time: string;
+  adventure_type: string;
+};
+
 export default function PostScreen() {
+  const { questId } =
+    useLocalSearchParams<{ questId?: string }>();
+
+  const [quest, setQuest] = useState<Quest | null>(null);
   const [image, setImage] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [posted, setPosted] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [loadingQuest, setLoadingQuest] = useState(true);
 
+  /*
+   * QUESTを読み込む
+   */
+  useEffect(() => {
+    const loadQuest = async () => {
+      if (!questId) {
+        Alert.alert(
+          'エラー',
+          'Questの情報が見つかりませんでした。',
+        );
+
+        setLoadingQuest(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('quests')
+        .select(
+          'id, number, title, description, difficulty, estimated_time, adventure_type',
+        )
+        .eq('id', questId)
+        .single();
+
+      console.log('POST QUEST:', data);
+      console.log('POST QUEST ERROR:', error);
+
+      if (error || !data) {
+        Alert.alert(
+          'エラー',
+          'Questを読み込めませんでした。',
+        );
+
+        setLoadingQuest(false);
+        return;
+      }
+
+      setQuest(data);
+      setLoadingQuest(false);
+    };
+
+    loadQuest();
+  }, [questId]);
+
+  /*
+   * 写真を選ぶ
+   */
   const pickPhoto = async () => {
     const permission =
       await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -27,6 +91,7 @@ export default function PostScreen() {
         '写真へのアクセスが必要です',
         'CLEAR写真を選ぶために、写真へのアクセスを許可してください。',
       );
+
       return;
     }
 
@@ -44,22 +109,210 @@ export default function PostScreen() {
     }
   };
 
-  const handlePost = () => {
+  /*
+   * CLEAR写真をSupabase Storageへアップロード
+   */
+  const uploadQuestPhoto = async (
+    imageUri: string,
+    userId: string,
+  ) => {
+    const response = await fetch(imageUri);
+
+    const arrayBuffer =
+      await response.arrayBuffer();
+
+    const extension =
+      imageUri
+        .split('.')
+        .pop()
+        ?.split('?')[0]
+        ?.toLowerCase() || 'jpg';
+
+    const mimeType =
+      extension === 'png'
+        ? 'image/png'
+        : extension === 'webp'
+        ? 'image/webp'
+        : 'image/jpeg';
+
+    const filePath =
+      `${userId}/${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}.${extension}`;
+
+    const { error: uploadError } =
+      await supabase.storage
+        .from('quest-photos')
+        .upload(
+          filePath,
+          arrayBuffer,
+          {
+            contentType: mimeType,
+            upsert: false,
+          },
+        );
+
+    if (uploadError) {
+      console.log(
+        'QUEST PHOTO UPLOAD ERROR:',
+        uploadError,
+      );
+
+      throw uploadError;
+    }
+
+    const { data } =
+      supabase.storage
+        .from('quest-photos')
+        .getPublicUrl(filePath);
+
+    return data.publicUrl;
+  };
+
+  /*
+   * CLEARする
+   */
+  const handlePost = async () => {
     if (!image) {
       Alert.alert(
         '写真を選択してください',
         'CLEARした時の写真を1枚選んでください。',
       );
+
       return;
     }
 
-    setPosted(true);
+    if (!quest) {
+      Alert.alert(
+        'Questが見つかりません',
+        'もう一度Questからやり直してください。',
+      );
+
+      return;
+    }
+
+    if (posting) {
+      return;
+    }
+
+    setPosting(true);
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        Alert.alert(
+          'ログインが必要です',
+          'CLEARを保存するにはログインしてください。',
+        );
+
+        return;
+      }
+
+      /*
+       * ① 写真をStorageへ保存
+       */
+      const photoUrl =
+        await uploadQuestPhoto(
+          image,
+          user.id,
+        );
+
+      /*
+       * ② CLEAR記録をDBへ保存
+       */
+      const { error: completionError } =
+        await supabase
+          .from('quest_completions')
+          .insert({
+            user_id: user.id,
+            quest_id: quest.id,
+            caption:
+              caption.trim() || null,
+            photo_url: photoUrl,
+          });
+
+      if (completionError) {
+        throw completionError;
+      }
+
+      /*
+       * 完了画面
+       */
+      setPosted(true);
+    } catch (error: any) {
+      console.log(
+        'CLEAR SAVE ERROR:',
+        error,
+      );
+
+      Alert.alert(
+        '保存できませんでした',
+        error?.message ??
+          'CLEARの保存中にエラーが発生しました。',
+      );
+    } finally {
+      setPosting(false);
+    }
   };
 
+  /*
+   * Quest読み込み中
+   */
+  if (loadingQuest) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>
+            LOADING QUEST...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /*
+   * Questがない
+   */
+  if (!quest) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.emptyTitle}>
+            QUEST NOT FOUND
+          </Text>
+
+          <Pressable
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.backButtonText}>
+              BACK
+            </Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /*
+   * CLEAR完了画面
+   */
   if (posted) {
     return (
       <SafeAreaView style={styles.container}>
-        <ScrollView contentContainerStyle={styles.completeScroll}>
+        <ScrollView
+          contentContainerStyle={
+            styles.completeScroll
+          }
+        >
           <View style={styles.complete}>
 
             <Text style={styles.completeIcon}>
@@ -75,6 +328,10 @@ export default function PostScreen() {
             </Text>
 
             <Text style={styles.completeText}>
+              {quest.number}
+              {'\n'}
+              {quest.title}
+              {'\n\n'}
               あなたのCLEARがプロフィールに
               記録されました。
             </Text>
@@ -88,7 +345,9 @@ export default function PostScreen() {
 
             <Pressable
               style={styles.homeButton}
-              onPress={() => router.replace('/(tabs)')}
+              onPress={() =>
+                router.replace('/(tabs)')
+              }
             >
               <Text style={styles.homeButtonText}>
                 BACK TO HOME
@@ -101,9 +360,14 @@ export default function PostScreen() {
     );
   }
 
+  /*
+   * POST画面
+   */
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+      >
 
         <Text style={styles.logo}>
           QUESTORY
@@ -124,11 +388,11 @@ export default function PostScreen() {
           </Text>
 
           <Text style={styles.questNumber}>
-            #027
+            {quest.number}
           </Text>
 
           <Text style={styles.questTitle}>
-            知らない駅で降りてみろ。
+            {quest.title}
           </Text>
 
           <View style={styles.clearBadge}>
@@ -202,12 +466,16 @@ export default function PostScreen() {
         <Pressable
           style={[
             styles.postButton,
-            !image && styles.disabledButton,
+            (!image || posting) &&
+              styles.disabledButton,
           ]}
           onPress={handlePost}
+          disabled={posting}
         >
           <Text style={styles.postButtonText}>
-            POST CLEAR
+            {posting
+              ? 'SAVING...'
+              : 'POST CLEAR'}
           </Text>
         </Pressable>
 
@@ -236,6 +504,41 @@ const styles = StyleSheet.create({
   completeScroll: {
     flexGrow: 1,
     paddingHorizontal: 22,
+  },
+
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+
+  loadingText: {
+    color: '#8ECAFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+  },
+
+  emptyTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+
+  backButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 17,
+    paddingVertical: 17,
+    paddingHorizontal: 60,
+    marginTop: 25,
+  },
+
+  backButtonText: {
+    color: '#080B12',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.5,
   },
 
   logo: {

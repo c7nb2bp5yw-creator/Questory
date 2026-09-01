@@ -1,6 +1,10 @@
 import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import React, {
+  useCallback,
+  useState,
+} from 'react';
+
 import {
   Alert,
   Image,
@@ -12,99 +16,276 @@ import {
   TextInput,
   View,
 } from 'react-native';
+
 import { supabase } from '../../lib/supabase';
 
-const questHistory = [
-  {
-    number: '027',
-    title: '知らない駅で降りてみろ。',
-    date: 'TODAY',
-    photo: 'CLEAR PHOTO 027',
-  },
-  {
-    number: '026',
-    title: '朝5時に起きて日の出を見ろ。',
-    date: '2 DAYS AGO',
-    photo: 'CLEAR PHOTO 026',
-  },
-  {
-    number: '025',
-    title: '一人で知らない店に入れ。',
-    date: '5 DAYS AGO',
-    photo: 'CLEAR PHOTO 025',
-  },
-  {
-    number: '024',
-    title: '夜の街を1時間歩け。',
-    date: '1 WEEK AGO',
-    photo: 'CLEAR PHOTO 024',
-  },
-];
+type Quest = {
+  id: string;
+  number: string;
+  title: string;
+  description: string;
+  difficulty: string;
+  estimated_time: string;
+  adventure_type: string;
+};
+
+type Completion = {
+  id: string;
+  quest_id: string;
+  caption: string | null;
+  photo_url: string | null;
+  completed_at: string;
+  quest: Quest;
+};
 
 export default function ProfileScreen() {
   const [name, setName] = useState('');
   const [userId, setUserId] = useState('');
   const [bio, setBio] = useState('');
-  const [adventureType, setAdventureType] = useState('');
-  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [adventureType, setAdventureType] =
+    useState('');
 
-  const [saved, setSaved] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [profileImage, setProfileImage] =
+    useState<string | null>(null);
 
-  const [selectedQuest, setSelectedQuest] =
-    useState<number | null>(null);
+  const [journey, setJourney] =
+    useState<Completion[]>([]);
 
-  useEffect(() => {
-    const loadProfile = async () => {
-      setIsLoading(true);
+  const [isLoading, setIsLoading] =
+    useState(true);
 
+  const [isLoadingJourney, setIsLoadingJourney] =
+    useState(true);
+
+  const [saved, setSaved] =
+    useState(false);
+
+  const [isSaving, setIsSaving] =
+    useState(false);
+
+  /*
+   * PROFILE
+   */
+  const loadProfile = useCallback(async () => {
+    setIsLoading(true);
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      Alert.alert(
+        'エラー',
+        'ログイン情報を確認できませんでした。',
+      );
+
+      setIsLoading(false);
+      return;
+    }
+
+    const { data, error } =
+      await supabase
+        .from('profiles')
+        .select(
+          'name, username, bio, avatar_url, adventure_type',
+        )
+        .eq('id', user.id)
+        .single();
+
+    if (error) {
+      console.log(
+        'PROFILE LOAD ERROR:',
+        error,
+      );
+
+      Alert.alert(
+        'エラー',
+        'プロフィールを読み込めませんでした。',
+      );
+
+      setIsLoading(false);
+      return;
+    }
+
+    setName(data.name ?? '');
+
+    setUserId(
+      data.username
+        ? `@${data.username}`
+        : '',
+    );
+
+    setBio(data.bio ?? '');
+
+    setAdventureType(
+      data.adventure_type ?? '',
+    );
+
+    setProfileImage(
+      data.avatar_url ?? null,
+    );
+
+    setIsLoading(false);
+  }, []);
+
+  /*
+   * QUEST HISTORY
+   */
+  const loadJourney = useCallback(async () => {
+    setIsLoadingJourney(true);
+
+    try {
       const {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        Alert.alert(
-          'エラー',
-          'ログイン情報を確認できませんでした。'
+        console.log(
+          'PROFILE JOURNEY USER ERROR:',
+          userError,
         );
-        setIsLoading(false);
+
+        setJourney([]);
         return;
       }
 
-      const { data, error } = await supabase
-        .from('profiles')
+      const {
+        data: completions,
+        error: completionError,
+      } = await supabase
+        .from('quest_completions')
         .select(
-          'name, username, bio, avatar_url, adventure_type'
+          `
+            id,
+            quest_id,
+            caption,
+            photo_url,
+            completed_at
+          `,
         )
-        .eq('id', user.id)
-        .single();
+        .eq('user_id', user.id)
+        .order('completed_at', {
+          ascending: false,
+        });
 
-      if (error) {
-        console.log('PROFILE LOAD ERROR:', error);
-
-        Alert.alert(
-          'エラー',
-          'プロフィールを読み込めませんでした。'
+      if (completionError) {
+        console.log(
+          'PROFILE JOURNEY ERROR:',
+          completionError,
         );
 
-        setIsLoading(false);
+        setJourney([]);
         return;
       }
 
-      setName(data.name ?? '');
-      setUserId(data.username ? `@${data.username}` : '');
-      setBio(data.bio ?? '');
-      setAdventureType(data.adventure_type ?? '');
-      setProfileImage(data.avatar_url ?? null);
+      if (
+        !completions ||
+        completions.length === 0
+      ) {
+        setJourney([]);
+        return;
+      }
 
-      setIsLoading(false);
-    };
+      const questIds = [
+        ...new Set(
+          completions.map(
+            (completion) =>
+              completion.quest_id,
+          ),
+        ),
+      ];
 
-    loadProfile();
+      const {
+        data: quests,
+        error: questsError,
+      } = await supabase
+        .from('quests')
+        .select(
+          `
+            id,
+            number,
+            title,
+            description,
+            difficulty,
+            estimated_time,
+            adventure_type
+          `,
+        )
+        .in('id', questIds);
+
+      if (questsError) {
+        console.log(
+          'PROFILE QUEST ERROR:',
+          questsError,
+        );
+
+        setJourney([]);
+        return;
+      }
+
+      const questMap = new Map(
+        (quests ?? []).map(
+          (quest) => [
+            quest.id,
+            quest,
+          ],
+        ),
+      );
+
+      const result = completions
+        .map((completion) => {
+          const quest =
+            questMap.get(
+              completion.quest_id,
+            );
+
+          if (!quest) {
+            return null;
+          }
+
+          return {
+            ...completion,
+            quest,
+          };
+        })
+        .filter(
+          (
+            item,
+          ): item is Completion =>
+            item !== null,
+        );
+
+      setJourney(result);
+    } catch (error) {
+      console.log(
+        'PROFILE JOURNEY CATCH ERROR:',
+        error,
+      );
+
+      setJourney([]);
+    } finally {
+      setIsLoadingJourney(false);
+    }
   }, []);
 
+  /*
+   * Profileを開くたびに更新
+   */
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile();
+      loadJourney();
+    }, [
+      loadProfile,
+      loadJourney,
+    ]),
+  );
+
+  /*
+   * PROFILE PHOTO
+   */
   const changePhoto = async () => {
     const permission =
       await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -112,8 +293,9 @@ export default function ProfileScreen() {
     if (!permission.granted) {
       Alert.alert(
         '写真へのアクセスが必要です',
-        'プロフィール写真を選ぶために、写真へのアクセスを許可してください。'
+        'プロフィール写真を選ぶために、写真へのアクセスを許可してください。',
       );
+
       return;
     }
 
@@ -126,11 +308,87 @@ export default function ProfileScreen() {
       });
 
     if (!result.canceled) {
-      setProfileImage(result.assets[0].uri);
+      setProfileImage(
+        result.assets[0].uri,
+      );
+
       setSaved(false);
     }
   };
 
+  /*
+   * PROFILE PHOTO → SUPABASE STORAGE
+   */
+  const uploadProfileImage = async (
+    imageUri: string,
+    userId: string,
+  ) => {
+    try {
+      const response =
+        await fetch(imageUri);
+
+      const arrayBuffer =
+        await response.arrayBuffer();
+
+      const extension =
+        imageUri
+          .split('.')
+          .pop()
+          ?.split('?')[0]
+          ?.toLowerCase() || 'jpg';
+
+      const mimeType =
+        extension === 'png'
+          ? 'image/png'
+          : extension === 'webp'
+          ? 'image/webp'
+          : 'image/jpeg';
+
+      const filePath =
+        `${userId}/avatar-${Date.now()}.${extension}`;
+
+      const { error: uploadError } =
+        await supabase.storage
+          .from('avatars')
+          .upload(
+            filePath,
+            arrayBuffer,
+            {
+              contentType: mimeType,
+              upsert: true,
+            },
+          );
+
+      if (uploadError) {
+        console.log(
+          'AVATAR UPLOAD ERROR:',
+          uploadError,
+        );
+
+        throw uploadError;
+      }
+
+      const {
+        data: publicUrlData,
+      } =
+        supabase.storage
+          .from('avatars')
+          .getPublicUrl(filePath);
+
+      return publicUrlData.publicUrl;
+    } catch (error) {
+      console.log(
+        'AVATAR UPLOAD CATCH ERROR:',
+        error,
+      );
+
+      throw error;
+    }
+  };
+
+  /*
+   * SAVE PROFILE
+   */
   const handleSave = async () => {
     if (isSaving) {
       return;
@@ -139,150 +397,126 @@ export default function ProfileScreen() {
     setIsSaving(true);
     setSaved(false);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    if (userError || !user) {
-      Alert.alert(
-        'エラー',
-        'ログイン情報を確認できませんでした。'
+      if (userError || !user) {
+        Alert.alert(
+          'エラー',
+          'ログイン情報を確認できませんでした。',
+        );
+
+        return;
+      }
+
+      const cleanUsername =
+        userId
+          .trim()
+          .replace(/^@/, '');
+
+      let avatarUrl =
+        profileImage;
+
+      /*
+       * 新しく選択した端末写真なら
+       * Storageへアップロード
+       */
+      if (
+        profileImage &&
+        !profileImage.startsWith(
+          'http',
+        )
+      ) {
+        avatarUrl =
+          await uploadProfileImage(
+            profileImage,
+            user.id,
+          );
+
+        setProfileImage(
+          avatarUrl,
+        );
+      }
+
+      const { error } =
+        await supabase
+          .from('profiles')
+          .update({
+            name: name.trim(),
+            username: cleanUsername,
+            bio: bio.trim(),
+            avatar_url: avatarUrl,
+          })
+          .eq('id', user.id);
+
+      if (error) {
+        console.log(
+          'PROFILE SAVE ERROR:',
+          error,
+        );
+
+        throw error;
+      }
+
+      setSaved(true);
+
+      setTimeout(() => {
+        setSaved(false);
+      }, 2000);
+    } catch (error: any) {
+      console.log(
+        'PROFILE SAVE CATCH ERROR:',
+        error,
       );
-      setIsSaving(false);
-      return;
-    }
-
-    const cleanUsername = userId
-      .trim()
-      .replace(/^@/, '');
-
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        name: name.trim(),
-        username: cleanUsername,
-        bio: bio.trim(),
-        avatar_url: profileImage,
-      })
-      .eq('id', user.id);
-
-    if (error) {
-      console.log('PROFILE SAVE ERROR:', error);
 
       Alert.alert(
         '保存エラー',
-        error.message
+        error?.message ||
+          'プロフィールの保存に失敗しました。',
       );
-
+    } finally {
       setIsSaving(false);
-      return;
     }
-
-    setSaved(true);
-    setIsSaving(false);
-
-    setTimeout(() => {
-      setSaved(false);
-    }, 2000);
   };
 
-  if (selectedQuest !== null) {
-    const quest = questHistory[selectedQuest];
-
-    return (
-      <SafeAreaView style={styles.container}>
-        <ScrollView contentContainerStyle={styles.content}>
-
-          <Pressable
-            style={styles.backButton}
-            onPress={() => setSelectedQuest(null)}
-          >
-            <Text style={styles.backText}>
-              ← BACK TO PROFILE
-            </Text>
-          </Pressable>
-
-          <Text style={styles.logo}>
-            QUESTORY
-          </Text>
-
-          <Text style={styles.sub}>
-            QUEST MEMORY
-          </Text>
-
-          <View style={styles.detailHeader}>
-            <Text style={styles.questNumberLarge}>
-              #{quest.number}
-            </Text>
-
-            <Text style={styles.detailDate}>
-              CLEARED {quest.date}
-            </Text>
-          </View>
-
-          <View style={styles.clearPhoto}>
-            <Text style={styles.photoLabel}>
-              {quest.photo}
-            </Text>
-
-            <Text style={styles.photoIcon}>
-              📸
-            </Text>
-
-            <Text style={styles.photoHint}>
-              CLEARした時の写真
-            </Text>
-          </View>
-
-          <Text style={styles.detailLabel}>
-            QUEST
-          </Text>
-
-          <Text style={styles.detailTitle}>
-            {quest.title}
-          </Text>
-
-          <View style={styles.memoryBox}>
-            <Text style={styles.memoryLabel}>
-              MEMORY
-            </Text>
-
-            <Text style={styles.memoryText}>
-              この冒険で見つけた景色や思い出を
-              ここに残せます。
-            </Text>
-          </View>
-
-          <View style={styles.clearStatus}>
-            <Text style={styles.clearCheck}>
-              ✓
-            </Text>
-
-            <View>
-              <Text style={styles.statusTitle}>
-                QUEST CLEARED
-              </Text>
-
-              <Text style={styles.statusText}>
-                あなたの旅の一部になりました。
-              </Text>
-            </View>
-          </View>
-
-        </ScrollView>
-      </SafeAreaView>
+  /*
+   * DATE
+   */
+  const formatDate = (
+    dateString: string,
+  ) => {
+    const date = new Date(
+      dateString,
     );
-  }
+
+    return date.toLocaleDateString(
+      'ja-JP',
+      {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+      },
+    );
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={styles.container}
+    >
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={
+          styles.content
+        }
         keyboardShouldPersistTaps="handled"
       >
 
+        {/* HEADER */}
+
         <View style={styles.topBar}>
+
           <View>
             <Text style={styles.logo}>
               QUESTORY
@@ -294,55 +528,100 @@ export default function ProfileScreen() {
           </View>
 
           <Pressable
-            style={styles.settingsButton}
-            onPress={() => router.push('/settings')}
+            style={
+              styles.settingsButton
+            }
+            onPress={() =>
+              router.push('/settings')
+            }
           >
-            <Text style={styles.settingsButtonText}>
+            <Text
+              style={
+                styles.settingsButtonText
+              }
+            >
               ⚙ SETTINGS
             </Text>
           </Pressable>
+
         </View>
 
         {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>
+          <View
+            style={
+              styles.loadingContainer
+            }
+          >
+            <Text
+              style={styles.loadingText}
+            >
               LOADING PROFILE...
             </Text>
           </View>
         ) : (
           <>
-            <View style={styles.profileHeader}>
+            {/* PROFILE */}
 
-              <View style={styles.avatar}>
+            <View
+              style={styles.profileHeader}
+            >
+
+              <View
+                style={styles.avatar}
+              >
                 {profileImage ? (
                   <Image
-                    source={{ uri: profileImage }}
-                    style={styles.avatarImage}
+                    source={{
+                      uri: profileImage,
+                    }}
+                    style={
+                      styles.avatarImage
+                    }
                   />
                 ) : (
-                  <Text style={styles.avatarText}>
-                    {name.charAt(0).toUpperCase()}
+                  <Text
+                    style={
+                      styles.avatarText
+                    }
+                  >
+                    {name
+                      .charAt(0)
+                      .toUpperCase()}
                   </Text>
                 )}
               </View>
 
               <Pressable
-                style={styles.photoButton}
+                style={
+                  styles.photoButton
+                }
                 onPress={changePhoto}
               >
-                <Text style={styles.photoButtonText}>
+                <Text
+                  style={
+                    styles.photoButtonText
+                  }
+                >
                   CHANGE PHOTO
                 </Text>
               </Pressable>
 
             </View>
 
-            <Text style={styles.sectionLabel}>
+            {/* PROFILE INFORMATION */}
+
+            <Text
+              style={styles.sectionLabel}
+            >
               PROFILE INFORMATION
             </Text>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>
+            <View
+              style={styles.inputGroup}
+            >
+              <Text
+                style={styles.label}
+              >
                 NAME
               </Text>
 
@@ -358,8 +637,12 @@ export default function ProfileScreen() {
               />
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>
+            <View
+              style={styles.inputGroup}
+            >
+              <Text
+                style={styles.label}
+              >
                 USER ID
               </Text>
 
@@ -376,8 +659,12 @@ export default function ProfileScreen() {
               />
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>
+            <View
+              style={styles.inputGroup}
+            >
+              <Text
+                style={styles.label}
+              >
                 BIO
               </Text>
 
@@ -397,121 +684,264 @@ export default function ProfileScreen() {
                 placeholderTextColor="#4F5B6E"
               />
 
-              <Text style={styles.characterCount}>
+              <Text
+                style={
+                  styles.characterCount
+                }
+              >
                 {bio.length}/80
               </Text>
             </View>
 
-            <Text style={styles.sectionLabel}>
+            {/* ADVENTURE TYPE */}
+
+            <Text
+              style={styles.sectionLabel}
+            >
               ADVENTURE TYPE
             </Text>
 
-            <View style={styles.typeBox}>
-              <Text style={styles.typeText}>
-                {adventureType || 'NOT SET'}
+            <View
+              style={styles.typeBox}
+            >
+              <Text
+                style={styles.typeText}
+              >
+                {adventureType ||
+                  'NOT SET'}
               </Text>
             </View>
 
-            <Text style={styles.sectionLabel}>
+            {/* STATS */}
+
+            <Text
+              style={styles.sectionLabel}
+            >
               YOUR STATS
             </Text>
 
-            <View style={styles.stats}>
+            <View
+              style={styles.stats}
+            >
 
-              <View style={styles.stat}>
-                <Text style={styles.statNumber}>
-                  27
+              <View
+                style={styles.stat}
+              >
+                <Text
+                  style={styles.statNumber}
+                >
+                  {journey.length}
                 </Text>
 
-                <Text style={styles.statLabel}>
+                <Text
+                  style={styles.statLabel}
+                >
                   QUESTS CLEARED
                 </Text>
               </View>
 
-              <View style={styles.divider} />
+              <View
+                style={styles.divider}
+              />
 
-              <View style={styles.stat}>
-                <Text style={styles.statNumber}>
+              <View
+                style={styles.stat}
+              >
+                <Text
+                  style={styles.statNumber}
+                >
                   128
                 </Text>
 
-                <Text style={styles.statLabel}>
+                <Text
+                  style={styles.statLabel}
+                >
                   FOLLOWERS
                 </Text>
               </View>
 
-              <View style={styles.divider} />
+              <View
+                style={styles.divider}
+              />
 
-              <View style={styles.stat}>
-                <Text style={styles.statNumber}>
+              <View
+                style={styles.stat}
+              >
+                <Text
+                  style={styles.statNumber}
+                >
                   64
                 </Text>
 
-                <Text style={styles.statLabel}>
+                <Text
+                  style={styles.statLabel}
+                >
                   FOLLOWING
                 </Text>
               </View>
 
             </View>
 
-            <View style={styles.historyHeader}>
+            {/* QUEST HISTORY */}
+
+            <View
+              style={styles.historyHeader}
+            >
 
               <View>
-                <Text style={styles.sectionLabel}>
+                <Text
+                  style={styles.sectionLabel}
+                >
                   YOUR JOURNEY
                 </Text>
 
-                <Text style={styles.historyTitle}>
+                <Text
+                  style={styles.historyTitle}
+                >
                   QUEST HISTORY
                 </Text>
               </View>
 
-              <Text style={styles.historyCount}>
-                27 CLEARED
+              <Text
+                style={styles.historyCount}
+              >
+                {journey.length} CLEARED
               </Text>
 
             </View>
 
-            {questHistory.map((quest, index) => (
-              <Pressable
-                key={quest.number}
-                style={styles.historyCard}
-                onPress={() => setSelectedQuest(index)}
+            {isLoadingJourney ? (
+              <View
+                style={
+                  styles.historyEmpty
+                }
               >
-
-                <View style={styles.historyNumberBox}>
-                  <Text style={styles.historyNumber}>
-                    {quest.number}
-                  </Text>
-                </View>
-
-                <View style={styles.historyInfo}>
-                  <Text style={styles.historyQuest}>
-                    {quest.title}
-                  </Text>
-
-                  <Text style={styles.historyDate}>
-                    CLEARED {quest.date}
-                  </Text>
-                </View>
-
-                <Text style={styles.historyArrow}>
-                  →
+                <Text
+                  style={
+                    styles.historyEmptyText
+                  }
+                >
+                  LOADING QUEST HISTORY...
+                </Text>
+              </View>
+            ) : journey.length === 0 ? (
+              <View
+                style={
+                  styles.historyEmpty
+                }
+              >
+                <Text
+                  style={
+                    styles.historyEmptyIcon
+                  }
+                >
+                  ✦
                 </Text>
 
-              </Pressable>
-            ))}
+                <Text
+                  style={
+                    styles.historyEmptyTitle
+                  }
+                >
+                  NO QUESTS CLEARED
+                </Text>
+
+                <Text
+                  style={
+                    styles.historyEmptyText
+                  }
+                >
+                  CLEARしたQUESTがここに表示されます。
+                </Text>
+              </View>
+            ) : (
+              journey.map((item) => (
+                <Pressable
+                  key={item.id}
+                  style={
+                    styles.historyCard
+                  }
+                  onPress={() =>
+                    router.push({
+                      pathname: '/clear',
+                      params: {
+                        completionId:
+                          item.id,
+                      },
+                    })
+                  }
+                >
+
+                  <View
+                    style={
+                      styles.historyNumberBox
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.historyNumber
+                      }
+                    >
+                      {item.quest.number.replace(
+                        '#',
+                        '',
+                      )}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={
+                      styles.historyInfo
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.historyQuest
+                      }
+                    >
+                      {item.quest.title}
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.historyDate
+                      }
+                    >
+                      CLEARED{' '}
+                      {formatDate(
+                        item.completed_at,
+                      )}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={
+                      styles.historyArrow
+                    }
+                  >
+                    →
+                  </Text>
+
+                </Pressable>
+              ))
+            )}
+
+            {/* SAVE */}
 
             <Pressable
               style={[
                 styles.saveButton,
-                saved && styles.savedButton,
-                isSaving && styles.disabledButton,
+                saved &&
+                  styles.savedButton,
+                isSaving &&
+                  styles.disabledButton,
               ]}
               onPress={handleSave}
               disabled={isSaving}
             >
-              <Text style={styles.saveText}>
+              <Text
+                style={styles.saveText}
+              >
                 {isSaving
                   ? 'SAVING...'
                   : saved
@@ -520,9 +950,12 @@ export default function ProfileScreen() {
               </Text>
             </Pressable>
 
-            <Text style={styles.note}>
+            <Text
+              style={styles.note}
+            >
               プロフィール情報はSupabaseに保存されます。
             </Text>
+
           </>
         )}
 
@@ -799,6 +1232,37 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 
+  historyEmpty: {
+    backgroundColor: '#111722',
+    borderWidth: 1,
+    borderColor: '#202838',
+    borderRadius: 17,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    marginBottom: 9,
+  },
+
+  historyEmptyIcon: {
+    color: '#8ECAFF',
+    fontSize: 28,
+    marginBottom: 10,
+  },
+
+  historyEmptyTitle: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+
+  historyEmptyText: {
+    color: '#596579',
+    fontSize: 9,
+    textAlign: 'center',
+    marginTop: 7,
+  },
+
   saveButton: {
     backgroundColor: '#FFFFFF',
     borderRadius: 17,
@@ -828,131 +1292,5 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     textAlign: 'center',
     marginTop: 15,
-  },
-
-  backButton: {
-    marginBottom: 25,
-  },
-
-  backText: {
-    color: '#8ECAFF',
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-
-  detailHeader: {
-    marginTop: 35,
-    marginBottom: 20,
-  },
-
-  questNumberLarge: {
-    color: '#FFFFFF',
-    fontSize: 32,
-    fontWeight: '900',
-  },
-
-  detailDate: {
-    color: '#687386',
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1,
-    marginTop: 6,
-  },
-
-  clearPhoto: {
-    height: 330,
-    borderRadius: 24,
-    backgroundColor: '#192130',
-    borderWidth: 1,
-    borderColor: '#293345',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  photoLabel: {
-    color: '#566175',
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-  },
-
-  photoIcon: {
-    fontSize: 38,
-    marginTop: 12,
-  },
-
-  photoHint: {
-    color: '#4F5B6E',
-    fontSize: 9,
-    marginTop: 10,
-  },
-
-  detailLabel: {
-    color: '#687386',
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1.7,
-    marginTop: 25,
-  },
-
-  detailTitle: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    lineHeight: 37,
-    fontWeight: '900',
-    marginTop: 8,
-  },
-
-  memoryBox: {
-    backgroundColor: '#111722',
-    borderWidth: 1,
-    borderColor: '#202838',
-    borderRadius: 18,
-    padding: 18,
-    marginTop: 22,
-  },
-
-  memoryLabel: {
-    color: '#8ECAFF',
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-  },
-
-  memoryText: {
-    color: '#8792A4',
-    fontSize: 11,
-    lineHeight: 19,
-    marginTop: 9,
-  },
-
-  clearStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0E1822',
-    borderWidth: 1,
-    borderColor: '#293345',
-    borderRadius: 17,
-    padding: 16,
-    marginTop: 14,
-  },
-
-  clearCheck: {
-    color: '#8ECAFF',
-    fontSize: 22,
-    marginRight: 13,
-  },
-
-  statusTitle: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '900',
-  },
-
-  statusText: {
-    color: '#596579',
-    fontSize: 9,
-    marginTop: 4,
   },
 });

@@ -29,6 +29,8 @@ type QuestInfo = {
   number: string;
   title: string;
   description: string;
+  difficulty?: string | null;
+  estimated_time?: string | null;
 };
 
 type Completion = {
@@ -52,6 +54,9 @@ export default function UserProfileScreen() {
 
   const [completions, setCompletions] =
     useState<Completion[]>([]);
+
+  const [nextQuest, setNextQuest] =
+    useState<QuestInfo | null>(null);
 
   const [currentUserId, setCurrentUserId] =
     useState<string | null>(null);
@@ -133,12 +138,72 @@ export default function UserProfileScreen() {
         );
 
         if (
-          !profileError &&
-          profileData
+          profileError ||
+          !profileData
         ) {
-          setProfile(
-            profileData as Profile,
-          );
+          setProfile(null);
+          return;
+        }
+
+        const loadedProfile =
+          profileData as Profile;
+
+        setProfile(loadedProfile);
+
+        /*
+         * 相手のNEXT QUEST
+         *
+         * 今は相手のadventure_typeに
+         * 合うQuestを1件表示。
+         *
+         * 後でHomeの「現在のQuest」と
+         * 完全同期させる。
+         */
+        const adventureType =
+          loadedProfile.adventure_type
+            ?.trim()
+            .toUpperCase();
+
+        if (adventureType) {
+          const {
+            data: questData,
+            error: questError,
+          } = await supabase
+            .from('quests')
+            .select(
+              `
+                id,
+                number,
+                title,
+                description,
+                difficulty,
+                estimated_time
+              `,
+            )
+            .eq(
+              'adventure_type',
+              adventureType,
+            )
+            .order('number', {
+              ascending: false,
+            })
+            .limit(1)
+            .maybeSingle();
+
+          if (questError) {
+            console.log(
+              'OTHER USER NEXT QUEST ERROR:',
+              questError,
+            );
+
+            setNextQuest(null);
+          } else {
+            setNextQuest(
+              questData as QuestInfo | null,
+            );
+          }
+        } else {
+          setNextQuest(null);
         }
 
         /*
@@ -277,6 +342,8 @@ export default function UserProfileScreen() {
           setCompletions(
             completionData as unknown as Completion[],
           );
+        } else {
+          setCompletions([]);
         }
       } catch (error) {
         console.log(
@@ -510,6 +577,7 @@ export default function UserProfileScreen() {
         </Text>
 
         {/* PROFILE */}
+
         <View
           style={styles.profileHeader}
         >
@@ -565,6 +633,7 @@ export default function UserProfileScreen() {
         </View>
 
         {/* FOLLOW */}
+
         {!isOwnProfile && (
           <Pressable
             style={[
@@ -601,6 +670,7 @@ export default function UserProfileScreen() {
         )}
 
         {/* COUNTS */}
+
         <View style={styles.stats}>
           <View
             style={styles.statItem}
@@ -660,6 +730,7 @@ export default function UserProfileScreen() {
         </View>
 
         {/* BIO */}
+
         <View style={styles.bioCard}>
           <Text
             style={styles.cardLabel}
@@ -697,7 +768,133 @@ export default function UserProfileScreen() {
           )}
         </View>
 
+        {/* NEXT QUEST */}
+
+        <View
+          style={
+            styles.nextQuestSection
+          }
+        >
+          <View
+            style={
+              styles.nextQuestHeader
+            }
+          >
+            <View>
+              <Text
+                style={styles.cardLabel}
+              >
+                NEXT QUEST
+              </Text>
+
+              <Text
+                style={
+                  styles.nextQuestHeading
+                }
+              >
+                次の冒険。
+              </Text>
+            </View>
+
+            <Text
+              style={
+                styles.nextQuestStatus
+              }
+            >
+              ACTIVE
+            </Text>
+          </View>
+
+          {nextQuest ? (
+            <View
+              style={
+                styles.nextQuestCard
+              }
+            >
+              <View
+                style={
+                  styles.nextQuestTop
+                }
+              >
+                <Text
+                  style={
+                    styles.nextQuestNumber
+                  }
+                >
+                  {nextQuest.number}
+                </Text>
+
+                {nextQuest.estimated_time ? (
+                  <Text
+                    style={
+                      styles.nextQuestTime
+                    }
+                  >
+                    {
+                      nextQuest.estimated_time
+                    }
+                  </Text>
+                ) : null}
+              </View>
+
+              <Text
+                style={
+                  styles.nextQuestTitle
+                }
+              >
+                {nextQuest.title}
+              </Text>
+
+              <Text
+                style={
+                  styles.nextQuestDescription
+                }
+              >
+                {nextQuest.description}
+              </Text>
+
+              <View
+                style={
+                  styles.joinPreview
+                }
+              >
+                <Text
+                  style={
+                    styles.joinPreviewText
+                  }
+                >
+                  CO-OP QUEST
+                </Text>
+
+                <Text
+                  style={
+                    styles.joinComingSoon
+                  }
+                >
+                  JOIN COMING SOON
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View
+              style={
+                styles.nextQuestEmpty
+              }
+            >
+              <Text
+                style={
+                  styles.nextQuestEmptyText
+                }
+              >
+                NEXT QUESTは
+                まだありません。
+              </Text>
+            </View>
+          )}
+        </View>
+
         {/* QUEST HISTORY */}
+
         <View
           style={styles.historyHeader}
         >
@@ -1062,6 +1259,112 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     marginTop: 7,
+  },
+
+  nextQuestSection: {
+    marginTop: 38,
+  },
+
+  nextQuestHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: 17,
+  },
+
+  nextQuestHeading: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: 8,
+  },
+
+  nextQuestStatus: {
+    color: '#8ECAFF',
+    fontSize: 7,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+
+  nextQuestCard: {
+    backgroundColor: '#0E141E',
+    borderWidth: 1,
+    borderColor: '#293345',
+    borderRadius: 22,
+    padding: 19,
+  },
+
+  nextQuestTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  nextQuestNumber: {
+    color: '#8ECAFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+
+  nextQuestTime: {
+    color: '#536075',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+
+  nextQuestTitle: {
+    color: '#FFFFFF',
+    fontSize: 19,
+    lineHeight: 27,
+    fontWeight: '900',
+    marginTop: 12,
+  },
+
+  nextQuestDescription: {
+    color: '#687386',
+    fontSize: 10,
+    lineHeight: 17,
+    marginTop: 9,
+  },
+
+  joinPreview: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#202838',
+    marginTop: 17,
+    paddingTop: 15,
+  },
+
+  joinPreviewText: {
+    color: '#536075',
+    fontSize: 7,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+
+  joinComingSoon: {
+    color: '#8ECAFF',
+    fontSize: 7,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+
+  nextQuestEmpty: {
+    backgroundColor: '#111722',
+    borderWidth: 1,
+    borderColor: '#202838',
+    borderRadius: 22,
+    padding: 22,
+  },
+
+  nextQuestEmptyText: {
+    color: '#687386',
+    fontSize: 10,
+    textAlign: 'center',
   },
 
   historyHeader: {

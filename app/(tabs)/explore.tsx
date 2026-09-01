@@ -1,240 +1,464 @@
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, {
+  useCallback,
+  useMemo,
+  useState,
+} from 'react';
+
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
+import { useFocusEffect } from '@react-navigation/native';
+
 import { supabase } from '../../lib/supabase';
+
+type Profile = {
+  id: string;
+  name: string | null;
+  username: string | null;
+  bio: string | null;
+  adventure_type: string | null;
+  avatar_url: string | null;
+};
 
 type Quest = {
   id: string;
   number: string;
   title: string;
   description: string;
-  difficulty: string | null;
-  estimated_time: string | null;
-  adventure_type: string | null;
 };
 
-export default function ExploreScreen() {
-  const [quests, setQuests] = useState<Quest[]>([]);
-  const [selectedQuest, setSelectedQuest] =
-    useState<Quest | null>(null);
+type FriendCompletion = {
+  id: string;
+  user_id: string;
+  quest_id: string;
+  caption: string | null;
+  photo_url: string | null;
+  completed_at: string;
+  profile: Profile;
+  quest: Quest;
+};
 
-  const [loading, setLoading] = useState(true);
+type ExploreMode = 'friends' | 'users';
+
+export default function ExploreScreen() {
+  const [mode, setMode] =
+    useState<ExploreMode>('friends');
+
+  const [currentUserId, setCurrentUserId] =
+    useState<string | null>(null);
+
+  const [friendCompletions, setFriendCompletions] =
+    useState<FriendCompletion[]>([]);
+
+  const [loadingFriends, setLoadingFriends] =
+    useState(true);
+
+  const [users, setUsers] =
+    useState<Profile[]>([]);
+
+  const [loadingUsers, setLoadingUsers] =
+    useState(false);
+
+  const [searchText, setSearchText] =
+    useState('');
 
   /*
-   * Quest一覧をSupabaseから取得
+   * FRIENDS FEED
+   *
+   * 1. ログイン中ユーザー取得
+   * 2. followsからフォロー中ユーザー取得
+   * 3. その人たちのCLEAR取得
+   * 4. profile / quest情報を合体
    */
-  useEffect(() => {
-    const loadQuests = async () => {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from('quests')
-        .select(
-          `
-            id,
-            number,
-            title,
-            description,
-            difficulty,
-            estimated_time,
-            adventure_type
-          `,
-        )
-        .order('number', {
-          ascending: true,
-        });
+  const loadFriendsFeed = useCallback(
+    async () => {
+      setLoadingFriends(true);
 
-      console.log(
-        'EXPLORE QUESTS:',
-        data,
-      );
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
 
-      console.log(
-        'EXPLORE QUEST ERROR:',
-        error,
-      );
+        if (userError || !user) {
+          console.log(
+            'EXPLORE USER ERROR:',
+            userError,
+          );
 
-      if (!error && data) {
-        setQuests(data as Quest[]);
+          setCurrentUserId(null);
+          setFriendCompletions([]);
+          return;
+        }
+
+        setCurrentUserId(user.id);
+
+        const {
+          data: follows,
+          error: followError,
+        } = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', user.id);
+
+        if (followError) {
+          console.log(
+            'EXPLORE FOLLOW ERROR:',
+            followError,
+          );
+
+          setFriendCompletions([]);
+          return;
+        }
+
+        const followingIds = (
+          follows ?? []
+        ).map(
+          (follow) => follow.following_id,
+        );
+
+        if (followingIds.length === 0) {
+          setFriendCompletions([]);
+          return;
+        }
+
+        const {
+          data: completions,
+          error: completionError,
+        } = await supabase
+          .from('quest_completions')
+          .select(
+            `
+              id,
+              user_id,
+              quest_id,
+              caption,
+              photo_url,
+              completed_at
+            `,
+          )
+          .in('user_id', followingIds)
+          .order('completed_at', {
+            ascending: false,
+          });
+
+        if (completionError) {
+          console.log(
+            'EXPLORE COMPLETION ERROR:',
+            completionError,
+          );
+
+          setFriendCompletions([]);
+          return;
+        }
+
+        if (
+          !completions ||
+          completions.length === 0
+        ) {
+          setFriendCompletions([]);
+          return;
+        }
+
+        const completionUserIds = [
+          ...new Set(
+            completions.map(
+              (completion) =>
+                completion.user_id,
+            ),
+          ),
+        ];
+
+        const completionQuestIds = [
+          ...new Set(
+            completions.map(
+              (completion) =>
+                completion.quest_id,
+            ),
+          ),
+        ];
+
+        const [
+          profileResult,
+          questResult,
+        ] = await Promise.all([
+          supabase
+            .from('profiles')
+            .select(
+              `
+                id,
+                name,
+                username,
+                bio,
+                adventure_type,
+                avatar_url
+              `,
+            )
+            .in(
+              'id',
+              completionUserIds,
+            ),
+
+          supabase
+            .from('quests')
+            .select(
+              `
+                id,
+                number,
+                title,
+                description
+              `,
+            )
+            .in(
+              'id',
+              completionQuestIds,
+            ),
+        ]);
+
+        if (profileResult.error) {
+          console.log(
+            'EXPLORE PROFILE ERROR:',
+            profileResult.error,
+          );
+
+          setFriendCompletions([]);
+          return;
+        }
+
+        if (questResult.error) {
+          console.log(
+            'EXPLORE QUEST ERROR:',
+            questResult.error,
+          );
+
+          setFriendCompletions([]);
+          return;
+        }
+
+        const profileMap = new Map(
+          (profileResult.data ?? []).map(
+            (profile) => [
+              profile.id,
+              profile as Profile,
+            ],
+          ),
+        );
+
+        const questMap = new Map(
+          (questResult.data ?? []).map(
+            (quest) => [
+              quest.id,
+              quest as Quest,
+            ],
+          ),
+        );
+
+        const result = completions
+          .map((completion) => {
+            const profile =
+              profileMap.get(
+                completion.user_id,
+              );
+
+            const quest =
+              questMap.get(
+                completion.quest_id,
+              );
+
+            if (!profile || !quest) {
+              return null;
+            }
+
+            return {
+              ...completion,
+              profile,
+              quest,
+            };
+          })
+          .filter(
+            (
+              item,
+            ): item is FriendCompletion =>
+              item !== null,
+          );
+
+        setFriendCompletions(result);
+      } catch (error) {
+        console.log(
+          'EXPLORE FRIENDS ERROR:',
+          error,
+        );
+
+        setFriendCompletions([]);
+      } finally {
+        setLoadingFriends(false);
+      }
+    },
+    [],
+  );
+
+  /*
+   * Exploreに戻るたび更新
+   *
+   * 友達をFOLLOWした直後でも
+   * FRIENDSに反映される。
+   */
+  useFocusEffect(
+    useCallback(() => {
+      loadFriendsFeed();
+    }, [loadFriendsFeed]),
+  );
+
+  /*
+   * USERS
+   */
+  const loadUsers = useCallback(
+    async () => {
+      setLoadingUsers(true);
+
+      try {
+        let myUserId =
+          currentUserId;
+
+        if (!myUserId) {
+          const {
+            data: { user },
+          } =
+            await supabase.auth.getUser();
+
+          myUserId =
+            user?.id ?? null;
+
+          setCurrentUserId(
+            myUserId,
+          );
+        }
+
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('profiles')
+          .select(
+            `
+              id,
+              name,
+              username,
+              bio,
+              adventure_type,
+              avatar_url
+            `,
+          )
+          .order('username', {
+            ascending: true,
+          });
+
+        if (error) {
+          console.log(
+            'EXPLORE USERS ERROR:',
+            error,
+          );
+
+          setUsers([]);
+          return;
+        }
+
+        const profiles =
+          (data ?? []) as Profile[];
+
+        setUsers(
+          profiles.filter(
+            (profile) =>
+              profile.id !==
+              myUserId,
+          ),
+        );
+      } catch (error) {
+        console.log(
+          'EXPLORE USERS ERROR:',
+          error,
+        );
+
+        setUsers([]);
+      } finally {
+        setLoadingUsers(false);
+      }
+    },
+    [currentUserId],
+  );
+
+  /*
+   * USERSタブを開いた時に取得
+   */
+  React.useEffect(() => {
+    if (mode === 'users') {
+      loadUsers();
+    }
+  }, [mode, loadUsers]);
+
+  /*
+   * USER ID / 名前検索
+   */
+  const filteredUsers =
+    useMemo(() => {
+      const keyword =
+        searchText
+          .trim()
+          .replace(/^@/, '')
+          .toLowerCase();
+
+      if (!keyword) {
+        return users;
       }
 
-      setLoading(false);
-    };
+      return users.filter(
+        (profile) => {
+          const username =
+            profile.username
+              ?.toLowerCase() ??
+            '';
 
-    loadQuests();
-  }, []);
+          const name =
+            profile.name
+              ?.toLowerCase() ??
+            '';
 
-  /*
-   * Quest詳細
-   */
-  if (selectedQuest) {
-    return (
-      <SafeAreaView
-        style={styles.container}
-      >
-        <ScrollView
-          contentContainerStyle={
-            styles.content
-          }
-        >
-          <Pressable
-            style={styles.backButton}
-            onPress={() =>
-              setSelectedQuest(null)
-            }
-          >
-            <Text style={styles.backText}>
-              ← BACK
-            </Text>
-          </Pressable>
+          return (
+            username.includes(
+              keyword,
+            ) ||
+            name.includes(
+              keyword,
+            )
+          );
+        },
+      );
+    }, [users, searchText]);
 
-          <Text style={styles.logo}>
-            QUESTORY
-          </Text>
-
-          <Text style={styles.sub}>
-            QUEST DETAIL
-          </Text>
-
-          <View style={styles.detailHeader}>
-            <Text
-              style={
-                styles.detailNumber
-              }
-            >
-              {selectedQuest.number}
-            </Text>
-
-            <Text
-              style={
-                styles.detailTitle
-              }
-            >
-              {selectedQuest.title}
-            </Text>
-
-            <Text
-              style={
-                styles.detailDescription
-              }
-            >
-              {selectedQuest.description}
-            </Text>
-          </View>
-
-          <View style={styles.infoCard}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>
-                DIFFICULTY
-              </Text>
-
-              <Text style={styles.infoValue}>
-                {selectedQuest.difficulty ||
-                  '—'}
-              </Text>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>
-                TIME
-              </Text>
-
-              <Text style={styles.infoValue}>
-                {selectedQuest.estimated_time ||
-                  '—'}
-              </Text>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>
-                TYPE
-              </Text>
-
-              <Text style={styles.infoValue}>
-                {selectedQuest.adventure_type ||
-                  '—'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.noticeCard}>
-            <Text style={styles.noticeLabel}>
-              QUEST
-            </Text>
-
-            <Text style={styles.noticeText}>
-              このQuestに挑戦して、
-              あなたの冒険を残そう。
-            </Text>
-          </View>
-
-          <Pressable
-            style={styles.homeButton}
-            onPress={() => {
-              setSelectedQuest(null);
-              router.push({
-                pathname: '/quest',
-                params: {
-                  questId:
-                    selectedQuest.id,
-                },
-              });
-            }}
-          >
-            <Text
-              style={
-                styles.homeButtonText
-              }
-            >
-              CHALLENGE THIS QUEST
-            </Text>
-          </Pressable>
-        </ScrollView>
-      </SafeAreaView>
+  const formatDate = (
+    value: string,
+  ) => {
+    return new Date(
+      value,
+    ).toLocaleDateString(
+      'ja-JP',
+      {
+        month: 'numeric',
+        day: 'numeric',
+      },
     );
-  }
+  };
 
-  /*
-   * Loading
-   */
-  if (loading) {
-    return (
-      <SafeAreaView
-        style={styles.container}
-      >
-        <View style={styles.center}>
-          <ActivityIndicator
-            size="small"
-            color="#8ECAFF"
-          />
-
-          <Text
-            style={styles.loadingText}
-          >
-            LOADING QUESTS...
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  /*
-   * Quest一覧
-   */
   return (
     <SafeAreaView
       style={styles.container}
@@ -243,7 +467,10 @@ export default function ExploreScreen() {
         contentContainerStyle={
           styles.content
         }
+        keyboardShouldPersistTaps="handled"
       >
+        {/* HEADER */}
+
         <Text style={styles.logo}>
           QUESTORY
         </Text>
@@ -253,373 +480,1082 @@ export default function ExploreScreen() {
         </Text>
 
         <Text style={styles.title}>
-          今日の冒険を
+          誰かの冒険が、
           {'\n'}
-          探そう。
+          次のきっかけになる。
         </Text>
 
-        <View style={styles.countBadge}>
-          <Text
-            style={
-              styles.countBadgeText
+        {/* FRIENDS / USERS */}
+
+        <View
+          style={styles.modeSwitch}
+        >
+          <Pressable
+            style={[
+              styles.modeButton,
+              mode === 'friends' &&
+                styles.modeButtonActive,
+            ]}
+            onPress={() =>
+              setMode('friends')
             }
           >
-            {quests.length} QUESTS
-          </Text>
+            <Text
+              style={[
+                styles.modeText,
+                mode === 'friends' &&
+                  styles.modeTextActive,
+              ]}
+            >
+              FRIENDS
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.modeButton,
+              mode === 'users' &&
+                styles.modeButtonActive,
+            ]}
+            onPress={() =>
+              setMode('users')
+            }
+          >
+            <Text
+              style={[
+                styles.modeText,
+                mode === 'users' &&
+                  styles.modeTextActive,
+              ]}
+            >
+              USERS
+            </Text>
+          </Pressable>
         </View>
 
-        {quests.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text
-              style={styles.emptyTitle}
-            >
-              NO QUESTS
-            </Text>
+        {/* FRIENDS */}
 
-            <Text
-              style={styles.emptyText}
-            >
-              現在表示できるQuestが
-              ありません。
-            </Text>
-          </View>
-        ) : (
-          quests.map((quest) => (
-            <Pressable
-              key={quest.id}
-              style={styles.questCard}
-              onPress={() =>
-                setSelectedQuest(quest)
+        {mode === 'friends' && (
+          <>
+            <View
+              style={
+                styles.sectionHeader
               }
             >
-              <View
-                style={
-                  styles.questTop
-                }
-              >
+              <View>
                 <Text
                   style={
-                    styles.questNumber
+                    styles.sectionLabel
                   }
                 >
-                  {quest.number}
+                  FRIENDS' ADVENTURES
                 </Text>
 
-                {quest.difficulty && (
+                <Text
+                  style={
+                    styles.sectionDescription
+                  }
+                >
+                  フォローしている人の
+                  最近の冒険。
+                </Text>
+              </View>
+
+              {!loadingFriends && (
+                <View
+                  style={
+                    styles.countBadge
+                  }
+                >
                   <Text
                     style={
-                      styles.difficulty
+                      styles.countBadgeText
                     }
                   >
-                    {quest.difficulty}
+                    {
+                      friendCompletions.length
+                    }{' '}
+                    POSTS
                   </Text>
-                )}
-              </View>
+                </View>
+              )}
+            </View>
 
-              <Text
-                style={
-                  styles.questTitle
-                }
-              >
-                {quest.title}
-              </Text>
-
-              <Text
-                style={
-                  styles.questDescription
-                }
-              >
-                {quest.description}
-              </Text>
-
+            {loadingFriends ? (
               <View
                 style={
-                  styles.questBottom
+                  styles.loadingArea
+                }
+              >
+                <ActivityIndicator
+                  size="small"
+                  color="#8ECAFF"
+                />
+
+                <Text
+                  style={
+                    styles.loadingText
+                  }
+                >
+                  LOADING ADVENTURES...
+                </Text>
+              </View>
+            ) : friendCompletions.length ===
+              0 ? (
+              <View
+                style={
+                  styles.emptyCard
                 }
               >
                 <Text
                   style={
-                    styles.questMeta
+                    styles.emptyTitle
                   }
                 >
-                  {quest.estimated_time ||
-                    'TIME —'}
+                  FIND YOUR FRIENDS
                 </Text>
 
                 <Text
                   style={
-                    styles.arrow
+                    styles.emptyText
                   }
                 >
-                  →
+                  まだ友達の冒険が
+                  ありません。
+                  {'\n'}
+                  USERSから冒険仲間を
+                  探してみよう。
+                </Text>
+
+                <Pressable
+                  style={
+                    styles.findUsersButton
+                  }
+                  onPress={() =>
+                    setMode('users')
+                  }
+                >
+                  <Text
+                    style={
+                      styles.findUsersButtonText
+                    }
+                  >
+                    FIND USERS →
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              friendCompletions.map(
+                (item) => (
+                  <Pressable
+                    key={item.id}
+                    style={
+                      styles.feedCard
+                    }
+                    onPress={() =>
+                      router.push({
+                        pathname:
+                          '/clear',
+                        params: {
+                          completionId:
+                            item.id,
+                        },
+                      })
+                    }
+                  >
+                    {/* USER */}
+
+                    <Pressable
+                      style={
+                        styles.feedUserRow
+                      }
+                      onPress={() =>
+                        router.push({
+                          pathname:
+                            '/user/[id]',
+                          params: {
+                            id: item
+                              .profile
+                              .id,
+                          },
+                        })
+                      }
+                    >
+                      {item.profile
+                        .avatar_url ? (
+                        <Image
+                          source={{
+                            uri: item
+                              .profile
+                              .avatar_url,
+                          }}
+                          style={
+                            styles.feedAvatar
+                          }
+                        />
+                      ) : (
+                        <View
+                          style={
+                            styles.feedAvatarFallback
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.feedAvatarLetter
+                            }
+                          >
+                            {(
+                              item
+                                .profile
+                                .name ||
+                              item
+                                .profile
+                                .username ||
+                              '?'
+                            )
+                              .charAt(0)
+                              .toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+
+                      <View
+                        style={
+                          styles.feedUserInfo
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.feedUserName
+                          }
+                        >
+                          {item.profile
+                            .name ||
+                            'ADVENTURER'}
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.feedUsername
+                          }
+                        >
+                          @
+                          {item.profile
+                            .username ||
+                            'unknown'}
+                        </Text>
+                      </View>
+
+                      <Text
+                        style={
+                          styles.feedDate
+                        }
+                      >
+                        {formatDate(
+                          item.completed_at,
+                        )}
+                      </Text>
+                    </Pressable>
+
+                    {/* PHOTO */}
+
+                    {item.photo_url ? (
+                      <Image
+                        source={{
+                          uri: item.photo_url,
+                        }}
+                        style={
+                          styles.feedPhoto
+                        }
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        style={
+                          styles.noPhoto
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.noPhotoMark
+                          }
+                        >
+                          ✦
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.noPhotoText
+                          }
+                        >
+                          ADVENTURE
+                          COMPLETED
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* QUEST */}
+
+                    <View
+                      style={
+                        styles.feedBody
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.feedQuestNumber
+                        }
+                      >
+                        {
+                          item.quest
+                            .number
+                        }
+                      </Text>
+
+                      <Text
+                        style={
+                          styles.feedQuestTitle
+                        }
+                      >
+                        {
+                          item.quest
+                            .title
+                        }
+                      </Text>
+
+                      {item.caption ? (
+                        <Text
+                          style={
+                            styles.feedCaption
+                          }
+                          numberOfLines={
+                            3
+                          }
+                        >
+                          {
+                            item.caption
+                          }
+                        </Text>
+                      ) : null}
+
+                      <View
+                        style={
+                          styles.feedBottom
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.feedViewText
+                          }
+                        >
+                          VIEW ADVENTURE
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.feedArrow
+                          }
+                        >
+                          →
+                        </Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                ),
+              )
+            )}
+          </>
+        )}
+
+        {/* USERS */}
+
+        {mode === 'users' && (
+          <>
+            <View
+              style={
+                styles.userHeader
+              }
+            >
+              <Text
+                style={
+                  styles.sectionLabel
+                }
+              >
+                FIND ADVENTURERS
+              </Text>
+
+              <Text
+                style={
+                  styles.sectionDescription
+                }
+              >
+                ユーザーIDから
+                冒険仲間を探そう。
+              </Text>
+            </View>
+
+            <View
+              style={
+                styles.searchBox
+              }
+            >
+              <Text
+                style={
+                  styles.atMark
+                }
+              >
+                @
+              </Text>
+
+              <TextInput
+                style={
+                  styles.searchInput
+                }
+                value={searchText}
+                onChangeText={
+                  setSearchText
+                }
+                placeholder="USER ID"
+                placeholderTextColor="#4F5B6E"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+              />
+
+              {searchText.length >
+                0 && (
+                <Pressable
+                  onPress={() =>
+                    setSearchText('')
+                  }
+                >
+                  <Text
+                    style={
+                      styles.clearSearch
+                    }
+                  >
+                    ×
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+
+            <Text
+              style={
+                styles.searchHint
+              }
+            >
+              IDの一部からでも
+              検索できます。
+            </Text>
+
+            {loadingUsers ? (
+              <View
+                style={
+                  styles.loadingArea
+                }
+              >
+                <ActivityIndicator
+                  size="small"
+                  color="#8ECAFF"
+                />
+
+                <Text
+                  style={
+                    styles.loadingText
+                  }
+                >
+                  SEARCHING USERS...
                 </Text>
               </View>
-            </Pressable>
-          ))
+            ) : filteredUsers.length ===
+              0 ? (
+              <View
+                style={
+                  styles.emptyCard
+                }
+              >
+                <Text
+                  style={
+                    styles.emptyTitle
+                  }
+                >
+                  USER NOT FOUND
+                </Text>
+
+                <Text
+                  style={
+                    styles.emptyText
+                  }
+                >
+                  該当するユーザーが
+                  見つかりませんでした。
+                </Text>
+              </View>
+            ) : (
+              <>
+                <View
+                  style={
+                    styles.resultHeader
+                  }
+                >
+                  <Text
+                    style={
+                      styles.resultLabel
+                    }
+                  >
+                    {searchText.trim()
+                      ? 'SEARCH RESULT'
+                      : 'ADVENTURERS'}
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.resultCount
+                    }
+                  >
+                    {
+                      filteredUsers.length
+                    }
+                  </Text>
+                </View>
+
+                {filteredUsers.map(
+                  (profile) => (
+                    <Pressable
+                      key={profile.id}
+                      style={
+                        styles.userCard
+                      }
+                      onPress={() =>
+                        router.push({
+                          pathname:
+                            '/user/[id]',
+                          params: {
+                            id: profile.id,
+                          },
+                        })
+                      }
+                    >
+                      {profile.avatar_url ? (
+                        <Image
+                          source={{
+                            uri: profile.avatar_url,
+                          }}
+                          style={
+                            styles.avatar
+                          }
+                        />
+                      ) : (
+                        <View
+                          style={
+                            styles.avatarFallback
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.avatarLetter
+                            }
+                          >
+                            {(
+                              profile.name ||
+                              profile.username ||
+                              '?'
+                            )
+                              .charAt(0)
+                              .toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+
+                      <View
+                        style={
+                          styles.userInfo
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.userName
+                          }
+                          numberOfLines={
+                            1
+                          }
+                        >
+                          {profile.name ||
+                            'ADVENTURER'}
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.username
+                          }
+                          numberOfLines={
+                            1
+                          }
+                        >
+                          @
+                          {profile.username ||
+                            'unknown'}
+                        </Text>
+
+                        {profile.adventure_type && (
+                          <Text
+                            style={
+                              styles.userType
+                            }
+                            numberOfLines={
+                              1
+                            }
+                          >
+                            {
+                              profile.adventure_type
+                            }
+                          </Text>
+                        )}
+                      </View>
+
+                      <Text
+                        style={
+                          styles.userArrow
+                        }
+                      >
+                        →
+                      </Text>
+                    </Pressable>
+                  ),
+                )}
+              </>
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#080B12',
-  },
+const styles =
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#080B12',
+    },
 
-  content: {
-    paddingHorizontal: 22,
-    paddingTop: 20,
-    paddingBottom: 120,
-  },
+    content: {
+      paddingHorizontal: 22,
+      paddingTop: 20,
+      paddingBottom: 120,
+    },
 
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    logo: {
+      color: '#FFFFFF',
+      fontSize: 18,
+      fontWeight: '900',
+      letterSpacing: 3,
+    },
 
-  loadingText: {
-    color: '#687386',
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-    marginTop: 12,
-  },
+    sub: {
+      color: '#586477',
+      fontSize: 9,
+      fontWeight: '800',
+      letterSpacing: 1.5,
+      marginTop: 7,
+    },
 
-  logo: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: 3,
-  },
+    title: {
+      color: '#FFFFFF',
+      fontSize: 30,
+      lineHeight: 40,
+      fontWeight: '900',
+      marginTop: 40,
+    },
 
-  sub: {
-    color: '#586477',
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1.5,
-    marginTop: 7,
-  },
+    modeSwitch: {
+      flexDirection: 'row',
+      backgroundColor: '#0E131D',
+      borderWidth: 1,
+      borderColor: '#202838',
+      borderRadius: 17,
+      padding: 4,
+      marginTop: 28,
+      marginBottom: 30,
+    },
 
-  title: {
-    color: '#FFFFFF',
-    fontSize: 31,
-    lineHeight: 41,
-    fontWeight: '900',
-    marginTop: 40,
-  },
+    modeButton: {
+      flex: 1,
+      paddingVertical: 12,
+      alignItems: 'center',
+      borderRadius: 13,
+    },
 
-  countBadge: {
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: '#2B3444',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    marginTop: 22,
-    marginBottom: 20,
-  },
+    modeButtonActive: {
+      backgroundColor: '#FFFFFF',
+    },
 
-  countBadgeText: {
-    color: '#8ECAFF',
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
+    modeText: {
+      color: '#596579',
+      fontSize: 9,
+      fontWeight: '900',
+      letterSpacing: 1.3,
+    },
 
-  questCard: {
-    backgroundColor: '#111722',
-    borderWidth: 1,
-    borderColor: '#293345',
-    borderRadius: 22,
-    padding: 19,
-    marginBottom: 14,
-  },
+    modeTextActive: {
+      color: '#080B12',
+    },
 
-  questTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent:
+        'space-between',
+      marginBottom: 18,
+    },
 
-  questNumber: {
-    color: '#8ECAFF',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
+    userHeader: {
+      marginBottom: 18,
+    },
 
-  difficulty: {
-    color: '#687386',
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
+    sectionLabel: {
+      color: '#8ECAFF',
+      fontSize: 9,
+      fontWeight: '900',
+      letterSpacing: 1.6,
+    },
 
-  questTitle: {
-    color: '#FFFFFF',
-    fontSize: 19,
-    lineHeight: 27,
-    fontWeight: '900',
-    marginTop: 12,
-  },
+    sectionDescription: {
+      color: '#687386',
+      fontSize: 10,
+      lineHeight: 16,
+      marginTop: 7,
+    },
 
-  questDescription: {
-    color: '#687386',
-    fontSize: 10,
-    lineHeight: 17,
-    marginTop: 9,
-  },
+    countBadge: {
+      borderWidth: 1,
+      borderColor: '#2B3444',
+      borderRadius: 20,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
 
-  questBottom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 18,
-  },
+    countBadgeText: {
+      color: '#8ECAFF',
+      fontSize: 7,
+      fontWeight: '900',
+      letterSpacing: 1,
+    },
 
-  questMeta: {
-    color: '#4F5B6E',
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
+    loadingArea: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 60,
+    },
 
-  arrow: {
-    color: '#8ECAFF',
-    fontSize: 18,
-  },
+    loadingText: {
+      color: '#687386',
+      fontSize: 9,
+      fontWeight: '900',
+      letterSpacing: 1.5,
+      marginTop: 12,
+    },
 
-  emptyCard: {
-    backgroundColor: '#111722',
-    borderWidth: 1,
-    borderColor: '#202838',
-    borderRadius: 22,
-    padding: 25,
-    alignItems: 'center',
-  },
+    emptyCard: {
+      backgroundColor: '#111722',
+      borderWidth: 1,
+      borderColor: '#202838',
+      borderRadius: 22,
+      padding: 25,
+      alignItems: 'center',
+    },
 
-  emptyTitle: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-  },
+    emptyTitle: {
+      color: '#FFFFFF',
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 1.5,
+    },
 
-  emptyText: {
-    color: '#687386',
-    fontSize: 10,
-    marginTop: 8,
-    textAlign: 'center',
-  },
+    emptyText: {
+      color: '#687386',
+      fontSize: 10,
+      lineHeight: 18,
+      marginTop: 9,
+      textAlign: 'center',
+    },
 
-  backButton: {
-    marginBottom: 28,
-  },
+    findUsersButton: {
+      borderWidth: 1,
+      borderColor: '#344054',
+      borderRadius: 14,
+      paddingHorizontal: 22,
+      paddingVertical: 12,
+      marginTop: 20,
+    },
 
-  backText: {
-    color: '#8ECAFF',
-    fontSize: 10,
-    fontWeight: '900',
-  },
+    findUsersButtonText: {
+      color: '#8ECAFF',
+      fontSize: 8,
+      fontWeight: '900',
+      letterSpacing: 1,
+    },
 
-  detailHeader: {
-    marginTop: 45,
-    marginBottom: 25,
-  },
+    feedCard: {
+      backgroundColor: '#111722',
+      borderWidth: 1,
+      borderColor: '#202838',
+      borderRadius: 22,
+      overflow: 'hidden',
+      marginBottom: 18,
+    },
 
-  detailNumber: {
-    color: '#8ECAFF',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
+    feedUserRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 14,
+    },
 
-  detailTitle: {
-    color: '#FFFFFF',
-    fontSize: 30,
-    lineHeight: 40,
-    fontWeight: '900',
-    marginTop: 10,
-  },
+    feedAvatar: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: '#192130',
+    },
 
-  detailDescription: {
-    color: '#687386',
-    fontSize: 12,
-    lineHeight: 20,
-    marginTop: 14,
-  },
+    feedAvatarFallback: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: '#192130',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
-  infoCard: {
-    backgroundColor: '#111722',
-    borderWidth: 1,
-    borderColor: '#202838',
-    borderRadius: 20,
-    paddingHorizontal: 18,
-  },
+    feedAvatarLetter: {
+      color: '#8ECAFF',
+      fontSize: 14,
+      fontWeight: '900',
+    },
 
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 17,
-  },
+    feedUserInfo: {
+      flex: 1,
+      marginLeft: 11,
+    },
 
-  infoLabel: {
-    color: '#536075',
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-  },
+    feedUserName: {
+      color: '#FFFFFF',
+      fontSize: 11,
+      fontWeight: '900',
+    },
 
-  infoValue: {
-    color: '#DCE1E8',
-    fontSize: 10,
-    fontWeight: '800',
-  },
+    feedUsername: {
+      color: '#596579',
+      fontSize: 8,
+      fontWeight: '700',
+      marginTop: 3,
+    },
 
-  divider: {
-    height: 1,
-    backgroundColor: '#202838',
-  },
+    feedDate: {
+      color: '#4F5B6E',
+      fontSize: 8,
+      fontWeight: '700',
+    },
 
-  noticeCard: {
-    backgroundColor: '#0C111A',
-    borderWidth: 1,
-    borderColor: '#293345',
-    borderRadius: 20,
-    padding: 18,
-    marginTop: 18,
-  },
+    feedPhoto: {
+      width: '100%',
+      height: 280,
+      backgroundColor: '#0D121B',
+    },
 
-  noticeLabel: {
-    color: '#8ECAFF',
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-  },
+    noPhoto: {
+      height: 190,
+      backgroundColor: '#0D121B',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
-  noticeText: {
-    color: '#DCE1E8',
-    fontSize: 12,
-    lineHeight: 20,
-    marginTop: 9,
-  },
+    noPhotoMark: {
+      color: '#8ECAFF',
+      fontSize: 28,
+    },
 
-  homeButton: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 17,
-    paddingVertical: 17,
-    alignItems: 'center',
-    marginTop: 24,
-  },
+    noPhotoText: {
+      color: '#4F5B6E',
+      fontSize: 8,
+      fontWeight: '900',
+      letterSpacing: 1.4,
+      marginTop: 10,
+    },
 
-  homeButtonText: {
-    color: '#080B12',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-  },
-});
+    feedBody: {
+      padding: 17,
+    },
+
+    feedQuestNumber: {
+      color: '#8ECAFF',
+      fontSize: 8,
+      fontWeight: '900',
+      letterSpacing: 1,
+    },
+
+    feedQuestTitle: {
+      color: '#FFFFFF',
+      fontSize: 18,
+      lineHeight: 26,
+      fontWeight: '900',
+      marginTop: 7,
+    },
+
+    feedCaption: {
+      color: '#687386',
+      fontSize: 10,
+      lineHeight: 17,
+      marginTop: 9,
+    },
+
+    feedBottom: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent:
+        'space-between',
+      marginTop: 16,
+      paddingTop: 13,
+      borderTopWidth: 1,
+      borderTopColor: '#202838',
+    },
+
+    feedViewText: {
+      color: '#536075',
+      fontSize: 7,
+      fontWeight: '900',
+      letterSpacing: 1.1,
+    },
+
+    feedArrow: {
+      color: '#8ECAFF',
+      fontSize: 16,
+    },
+
+    searchBox: {
+      height: 58,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#111722',
+      borderWidth: 1,
+      borderColor: '#293345',
+      borderRadius: 18,
+      paddingHorizontal: 17,
+    },
+
+    atMark: {
+      color: '#8ECAFF',
+      fontSize: 17,
+      fontWeight: '900',
+      marginRight: 7,
+    },
+
+    searchInput: {
+      flex: 1,
+      color: '#FFFFFF',
+      fontSize: 14,
+      fontWeight: '800',
+      paddingVertical: 0,
+    },
+
+    clearSearch: {
+      color: '#687386',
+      fontSize: 23,
+      fontWeight: '400',
+      paddingLeft: 12,
+    },
+
+    searchHint: {
+      color: '#4F5B6E',
+      fontSize: 8,
+      marginTop: 9,
+      marginBottom: 23,
+    },
+
+    resultHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent:
+        'space-between',
+      marginBottom: 11,
+    },
+
+    resultLabel: {
+      color: '#536075',
+      fontSize: 8,
+      fontWeight: '900',
+      letterSpacing: 1.3,
+    },
+
+    resultCount: {
+      color: '#8ECAFF',
+      fontSize: 9,
+      fontWeight: '900',
+    },
+
+    userCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#111722',
+      borderWidth: 1,
+      borderColor: '#202838',
+      borderRadius: 20,
+      padding: 14,
+      marginBottom: 11,
+    },
+
+    avatar: {
+      width: 54,
+      height: 54,
+      borderRadius: 27,
+      backgroundColor: '#192130',
+    },
+
+    avatarFallback: {
+      width: 54,
+      height: 54,
+      borderRadius: 27,
+      backgroundColor: '#192130',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    avatarLetter: {
+      color: '#8ECAFF',
+      fontSize: 18,
+      fontWeight: '900',
+    },
+
+    userInfo: {
+      flex: 1,
+      marginLeft: 13,
+    },
+
+    userName: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '900',
+    },
+
+    username: {
+      color: '#687386',
+      fontSize: 10,
+      fontWeight: '700',
+      marginTop: 4,
+    },
+
+    userType: {
+      color: '#8ECAFF',
+      fontSize: 8,
+      fontWeight: '900',
+      letterSpacing: 0.8,
+      marginTop: 6,
+    },
+
+    userArrow: {
+      color: '#8ECAFF',
+      fontSize: 18,
+      marginLeft: 10,
+    },
+  });

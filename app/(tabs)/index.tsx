@@ -41,6 +41,9 @@ export default function HomeScreen() {
   const [recommendedQuest, setRecommendedQuest] =
     useState<Quest | null>(null);
 
+  const [otherQuests, setOtherQuests] =
+    useState<Quest[]>([]);
+
   const [isLoadingQuest, setIsLoadingQuest] =
     useState(true);
 
@@ -184,10 +187,17 @@ export default function HomeScreen() {
   );
 
   /*
-   * FOR YOU
+   * NEXT QUEST + OTHER QUESTS
+   *
+   * 今は同じadventure_typeから4件取得。
+   * 1件目 = メイン
+   * 2〜4件目 = OTHER QUESTS
+   *
+   * CLEAR後の自動切替と
+   * SKIP 1日2回制限は後で実装。
    */
   useEffect(() => {
-    const loadRecommendedQuest =
+    const loadRecommendedQuests =
       async () => {
         setIsLoadingQuest(true);
 
@@ -204,6 +214,8 @@ export default function HomeScreen() {
               userError,
             );
 
+            setRecommendedQuest(null);
+            setOtherQuests([]);
             return;
           }
 
@@ -226,6 +238,8 @@ export default function HomeScreen() {
               profileError,
             );
 
+            setRecommendedQuest(null);
+            setOtherQuests([]);
             return;
           }
 
@@ -233,6 +247,12 @@ export default function HomeScreen() {
             profile.adventure_type
               ?.trim()
               .toUpperCase();
+
+          if (!adventureType) {
+            setRecommendedQuest(null);
+            setOtherQuests([]);
+            return;
+          }
 
           const {
             data: quests,
@@ -250,7 +270,7 @@ export default function HomeScreen() {
               .order('number', {
                 ascending: false,
               })
-              .limit(1);
+              .limit(4);
 
           if (questError) {
             console.log(
@@ -258,27 +278,47 @@ export default function HomeScreen() {
               questError,
             );
 
+            setRecommendedQuest(null);
+            setOtherQuests([]);
             return;
           }
 
+          const loadedQuests =
+            (quests ?? []) as Quest[];
+
           setRecommendedQuest(
-            quests &&
-              quests.length > 0
-              ? quests[0]
+            loadedQuests.length > 0
+              ? loadedQuests[0]
               : null,
+          );
+
+          setOtherQuests(
+            loadedQuests.slice(1, 4),
           );
         } catch (error) {
           console.log(
             'RECOMMENDED QUEST ERROR:',
             error,
           );
+
+          setRecommendedQuest(null);
+          setOtherQuests([]);
         } finally {
           setIsLoadingQuest(false);
         }
       };
 
-    loadRecommendedQuest();
+    loadRecommendedQuests();
   }, []);
+
+  const openQuest = (quest: Quest) => {
+    router.push({
+      pathname: '/quest',
+      params: {
+        questId: quest.id,
+      },
+    });
+  };
 
   return (
     <SafeAreaView
@@ -289,11 +329,9 @@ export default function HomeScreen() {
           styles.content
         }
       >
-
         {/* HEADER */}
 
         <View style={styles.header}>
-
           <View>
             <Text style={styles.logo}>
               QUESTORY
@@ -307,7 +345,6 @@ export default function HomeScreen() {
           <View
             style={styles.headerRight}
           >
-
             <Pressable
               style={
                 styles.notificationButton
@@ -342,14 +379,12 @@ export default function HomeScreen() {
                 07
               </Text>
             </View>
-
           </View>
         </View>
 
         {/* GREETING */}
 
         <View style={styles.greeting}>
-
           <Text
             style={styles.greetingSmall}
           >
@@ -362,19 +397,16 @@ export default function HomeScreen() {
             今日も、{'\n'}
             少しだけ冒険しよう。
           </Text>
-
         </View>
 
-        {/* FOR YOU */}
+        {/* YOUR NEXT QUEST */}
 
         <View
           style={styles.myQuestSection}
         >
-
           <View
             style={styles.sectionHeader}
           >
-
             <View>
               <Text
                 style={styles.smallLabel}
@@ -385,7 +417,7 @@ export default function HomeScreen() {
               <Text
                 style={styles.sectionTitle}
               >
-                あなたへのQUEST
+                YOUR NEXT QUEST
               </Text>
             </View>
 
@@ -394,13 +426,11 @@ export default function HomeScreen() {
             >
               AI
             </Text>
-
           </View>
 
           <View
             style={styles.aiQuestCard}
           >
-
             <Text
               style={styles.aiQuestLabel}
             >
@@ -419,6 +449,14 @@ export default function HomeScreen() {
               <>
                 <Text
                   style={
+                    styles.questNumber
+                  }
+                >
+                  {recommendedQuest.number}
+                </Text>
+
+                <Text
+                  style={
                     styles.aiQuestTitle
                   }
                 >
@@ -430,27 +468,75 @@ export default function HomeScreen() {
                     styles.aiQuestText
                   }
                 >
-                  あなたの冒険スタイルに合わせたQUEST。
+                  {
+                    recommendedQuest.description
+                  }
                 </Text>
+
+                <View
+                  style={
+                    styles.questMetaRow
+                  }
+                >
+                  <Text
+                    style={
+                      styles.questMeta
+                    }
+                  >
+                    {recommendedQuest.difficulty ||
+                      'QUEST'}
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.questMeta
+                    }
+                  >
+                    {recommendedQuest.estimated_time ||
+                      'TIME —'}
+                  </Text>
+                </View>
 
                 <Pressable
                   style={
-                    styles.outlineButton
+                    styles.mainQuestButton
                   }
                   onPress={() =>
-                    router.push(
-                      '/quests',
+                    openQuest(
+                      recommendedQuest,
                     )
                   }
                 >
                   <Text
                     style={
-                      styles.outlineButtonText
+                      styles.mainQuestButtonText
                     }
                   >
-                    VIEW QUEST →
+                    START QUEST →
                   </Text>
                 </Pressable>
+
+                <View
+                  style={
+                    styles.skipPreview
+                  }
+                >
+                  <Text
+                    style={
+                      styles.skipPreviewText
+                    }
+                  >
+                    SKIP
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.skipCount
+                    }
+                  >
+                    2 / DAY
+                  </Text>
+                </View>
               </>
             ) : (
               <Text
@@ -461,21 +547,128 @@ export default function HomeScreen() {
                 まだQuestがありません。
               </Text>
             )}
-
           </View>
-
         </View>
+
+        {/* OTHER QUESTS */}
+
+        {!isLoadingQuest &&
+          otherQuests.length > 0 && (
+            <View
+              style={
+                styles.otherQuestSection
+              }
+            >
+              <View
+                style={
+                  styles.sectionHeader
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      styles.smallLabel
+                    }
+                  >
+                    MORE FOR YOU
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.sectionTitle
+                    }
+                  >
+                    OTHER QUESTS
+                  </Text>
+                </View>
+
+                <Text
+                  style={
+                    styles.sectionCount
+                  }
+                >
+                  {otherQuests.length} QUESTS
+                </Text>
+              </View>
+
+              {otherQuests.map(
+                (quest) => (
+                  <Pressable
+                    key={quest.id}
+                    style={
+                      styles.otherQuestCard
+                    }
+                    onPress={() =>
+                      openQuest(quest)
+                    }
+                  >
+                    <View
+                      style={
+                        styles.otherQuestInfo
+                      }
+                    >
+                      <View
+                        style={
+                          styles.otherQuestTop
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.otherQuestNumber
+                          }
+                        >
+                          {quest.number}
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.otherQuestTime
+                          }
+                        >
+                          {quest.estimated_time ||
+                            'TIME —'}
+                        </Text>
+                      </View>
+
+                      <Text
+                        style={
+                          styles.otherQuestTitle
+                        }
+                      >
+                        {quest.title}
+                      </Text>
+
+                      <Text
+                        style={
+                          styles.otherQuestDescription
+                        }
+                        numberOfLines={2}
+                      >
+                        {quest.description}
+                      </Text>
+                    </View>
+
+                    <Text
+                      style={
+                        styles.otherQuestArrow
+                      }
+                    >
+                      →
+                    </Text>
+                  </Pressable>
+                ),
+              )}
+            </View>
+          )}
 
         {/* YOUR JOURNEY */}
 
         <View
           style={styles.journeySection}
         >
-
           <View
             style={styles.sectionHeader}
           >
-
             <Text
               style={styles.sectionTitle}
             >
@@ -487,7 +680,6 @@ export default function HomeScreen() {
             >
               {journey.length} QUESTS
             </Text>
-
           </View>
 
           {isLoadingJourney ? (
@@ -539,7 +731,6 @@ export default function HomeScreen() {
                   })
                 }
               >
-
                 <View
                   style={
                     styles.journeyNumber
@@ -560,7 +751,6 @@ export default function HomeScreen() {
                 <View
                   style={styles.journeyInfo}
                 >
-
                   <Text
                     style={
                       styles.journeyTitle
@@ -580,7 +770,6 @@ export default function HomeScreen() {
                       'ja-JP',
                     )}
                   </Text>
-
                 </View>
 
                 <Text
@@ -588,11 +777,9 @@ export default function HomeScreen() {
                 >
                   →
                 </Text>
-
               </Pressable>
             ))
           )}
-
         </View>
 
         {/* STREAK */}
@@ -600,9 +787,7 @@ export default function HomeScreen() {
         <View
           style={styles.streakCard}
         >
-
           <View>
-
             <Text
               style={styles.streakLabel}
             >
@@ -620,7 +805,6 @@ export default function HomeScreen() {
             >
               7日連続でQUEST CLEAR中
             </Text>
-
           </View>
 
           <Text
@@ -628,16 +812,13 @@ export default function HomeScreen() {
           >
             ✦
           </Text>
-
         </View>
-
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
     backgroundColor: '#080B12',
@@ -753,6 +934,12 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
 
+  sectionCount: {
+    color: '#4F5B6E',
+    fontSize: 8,
+    fontWeight: '800',
+  },
+
   myQuestSection: {
     marginTop: 0,
   },
@@ -779,12 +966,20 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
   },
 
+  questNumber: {
+    color: '#596579',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginTop: 15,
+  },
+
   aiQuestTitle: {
     color: '#FFFFFF',
     fontSize: 22,
     lineHeight: 30,
     fontWeight: '900',
-    marginTop: 11,
+    marginTop: 8,
   },
 
   aiQuestText: {
@@ -794,30 +989,117 @@ const styles = StyleSheet.create({
     marginTop: 9,
   },
 
-  outlineButton: {
-    borderWidth: 1,
-    borderColor: '#344054',
-    borderRadius: 14,
-    paddingVertical: 13,
-    alignItems: 'center',
-    marginTop: 16,
+  questMetaRow: {
+    flexDirection: 'row',
+    gap: 14,
+    marginTop: 15,
   },
 
-  outlineButtonText: {
-    color: '#DCE1E8',
-    fontSize: 9,
+  questMeta: {
+    color: '#536075',
+    fontSize: 8,
     fontWeight: '900',
     letterSpacing: 1,
   },
 
-  journeySection: {
-    marginTop: 35,
+  mainQuestButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 18,
   },
 
-  sectionCount: {
-    color: '#4F5B6E',
+  mainQuestButtonText: {
+    color: '#080B12',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+
+  skipPreview: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 15,
+  },
+
+  skipPreviewText: {
+    color: '#596579',
     fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+
+  skipCount: {
+    color: '#394456',
+    fontSize: 7,
     fontWeight: '800',
+  },
+
+  otherQuestSection: {
+    marginTop: 32,
+  },
+
+  otherQuestCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111722',
+    borderWidth: 1,
+    borderColor: '#202838',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 10,
+  },
+
+  otherQuestInfo: {
+    flex: 1,
+  },
+
+  otherQuestTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+
+  otherQuestNumber: {
+    color: '#8ECAFF',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+
+  otherQuestTime: {
+    color: '#4F5B6E',
+    fontSize: 7,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+
+  otherQuestTitle: {
+    color: '#DCE1E8',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '900',
+    marginTop: 8,
+  },
+
+  otherQuestDescription: {
+    color: '#596579',
+    fontSize: 9,
+    lineHeight: 15,
+    marginTop: 5,
+  },
+
+  otherQuestArrow: {
+    color: '#8ECAFF',
+    fontSize: 17,
+    marginLeft: 13,
+  },
+
+  journeySection: {
+    marginTop: 35,
   },
 
   journeyCard: {
@@ -895,5 +1177,4 @@ const styles = StyleSheet.create({
     color: '#8ECAFF',
     fontSize: 30,
   },
-
 });

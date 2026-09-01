@@ -44,6 +44,12 @@ export default function SettingsScreen() {
     );
   };
 
+  const openPrivacyPolicy = () => {
+    router.push(
+      '/privacy-policy' as any,
+    );
+  };
+
   return (
     <SafeAreaView
       style={styles.container}
@@ -288,6 +294,7 @@ export default function SettingsScreen() {
 
           <Pressable
             style={styles.menuRow}
+            onPress={openPrivacyPolicy}
           >
             <Text
               style={styles.rowTitle}

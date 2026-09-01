@@ -38,6 +38,12 @@ export default function SettingsScreen() {
     );
   };
 
+  const openTerms = () => {
+    router.push(
+      '/terms' as any,
+    );
+  };
+
   return (
     <SafeAreaView
       style={styles.container}
@@ -265,6 +271,7 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           <Pressable
             style={styles.menuRow}
+            onPress={openTerms}
           >
             <Text
               style={styles.rowTitle}

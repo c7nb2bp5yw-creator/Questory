@@ -71,6 +71,89 @@ export default function HomeScreen() {
   const [hasUnreadNotifications, setHasUnreadNotifications] =
     useState(false);
 
+  const [skipRemaining, setSkipRemaining] =
+    useState(2);
+
+  const [isSkipping, setIsSkipping] =
+    useState(false);
+
+  /*
+   * SKIP COUNT
+   */
+  const loadTodaySkipCount = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setSkipRemaining(2);
+        return;
+      }
+
+      const now = new Date();
+
+      const jstNow = new Date(
+        now.getTime() + 9 * 60 * 60 * 1000,
+      );
+
+      const year = jstNow.getUTCFullYear();
+      const month = String(
+        jstNow.getUTCMonth() + 1,
+      ).padStart(2, '0');
+      const day = String(
+        jstNow.getUTCDate(),
+      ).padStart(2, '0');
+
+      const startJst = new Date(
+        `${year}-${month}-${day}T00:00:00+09:00`,
+      );
+
+      const endJst = new Date(
+        startJst.getTime() +
+          24 * 60 * 60 * 1000,
+      );
+
+      const {
+        count,
+        error,
+      } = await supabase
+        .from('quest_actions')
+        .select('id', {
+          count: 'exact',
+          head: true,
+        })
+        .eq('user_id', user.id)
+        .eq('action', 'skip')
+        .gte(
+          'created_at',
+          startJst.toISOString(),
+        )
+        .lt(
+          'created_at',
+          endJst.toISOString(),
+        );
+
+      if (error) {
+        console.log(
+          'SKIP COUNT ERROR:',
+          error,
+        );
+        return;
+      }
+
+      setSkipRemaining(
+        Math.max(2 - (count ?? 0), 0),
+      );
+    } catch (error) {
+      console.log(
+        'LOAD SKIP COUNT ERROR:',
+        error,
+      );
+    }
+  }, []);
+
   /*
    * NOTIFICATIONS
    */
@@ -599,11 +682,13 @@ export default function HomeScreen() {
       loadCoOpQuests();
       loadUnreadNotifications();
       loadRecommendedQuests();
+      loadTodaySkipCount();
     }, [
       loadJourney,
       loadCoOpQuests,
       loadUnreadNotifications,
       loadRecommendedQuests,
+      loadTodaySkipCount,
     ]),
   );
 
@@ -622,6 +707,104 @@ export default function HomeScreen() {
           : {}),
       },
     });
+  };
+
+  /*
+   * MAIN QUEST SKIP
+   */
+  const skipMainQuest = () => {
+    if (
+      !recommendedQuest ||
+      isSkipping
+    ) {
+      return;
+    }
+
+    if (skipRemaining <= 0) {
+      Alert.alert(
+        '本日のSKIPは終了です',
+        'SKIPは1日2回までです。',
+      );
+      return;
+    }
+
+    Alert.alert(
+      'このQUESTをSKIPしますか？',
+      `今日あと${skipRemaining}回SKIPできます。`,
+      [
+        {
+          text: '戻る',
+          style: 'cancel',
+        },
+        {
+          text: 'SKIP',
+          onPress: async () => {
+            setIsSkipping(true);
+
+            try {
+              const {
+                data,
+                error,
+              } = await supabase.rpc(
+                'skip_fixed_main_quest',
+                {
+                  p_quest_id:
+                    recommendedQuest.id,
+                },
+              );
+
+              if (error) {
+                console.log(
+                  'SKIP QUEST ERROR:',
+                  error,
+                );
+
+                Alert.alert(
+                  'SKIPできませんでした',
+                  error.message ||
+                    '時間をおいてもう一度お試しください。',
+                );
+
+                await loadTodaySkipCount();
+                await loadRecommendedQuests();
+                return;
+              }
+
+              const result =
+                data as {
+                  skips_remaining_today?: number;
+                } | null;
+
+              if (
+                typeof result?.skips_remaining_today ===
+                'number'
+              ) {
+                setSkipRemaining(
+                  result.skips_remaining_today,
+                );
+              }
+
+              await Promise.all([
+                loadRecommendedQuests(),
+                loadTodaySkipCount(),
+              ]);
+            } catch (error) {
+              console.log(
+                'SKIP ACTION ERROR:',
+                error,
+              );
+
+              Alert.alert(
+                'エラー',
+                'SKIPできませんでした。',
+              );
+            } finally {
+              setIsSkipping(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   /*
@@ -908,17 +1091,25 @@ export default function HomeScreen() {
                   </Text>
                 </Pressable>
 
-                <View
-                  style={
-                    styles.skipPreview
-                  }
+                <Pressable
+                  style={[
+                    styles.skipPreview,
+                    (skipRemaining <= 0 ||
+                      isSkipping) && {
+                      opacity: 0.35,
+                    },
+                  ]}
+                  onPress={skipMainQuest}
+                  disabled={isSkipping}
                 >
                   <Text
                     style={
                       styles.skipPreviewText
                     }
                   >
-                    SKIP
+                    {isSkipping
+                      ? 'SKIPPING...'
+                      : 'SKIP'}
                   </Text>
 
                   <Text
@@ -926,9 +1117,9 @@ export default function HomeScreen() {
                       styles.skipCount
                     }
                   >
-                    2 / DAY
+                    {skipRemaining} / DAY
                   </Text>
-                </View>
+                </Pressable>
               </>
             ) : (
               <Text
@@ -1558,20 +1749,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 15,
+    alignSelf: 'center',
+    gap: 10,
+    marginTop: 14,
+    paddingHorizontal: 22,
+    paddingVertical: 11,
+    borderWidth: 1,
+    borderColor: '#293345',
+    borderRadius: 12,
   },
 
   skipPreviewText: {
-    color: '#596579',
-    fontSize: 8,
+    color: '#7C899D',
+    fontSize: 10,
     fontWeight: '900',
-    letterSpacing: 1.2,
+    letterSpacing: 1.4,
   },
 
   skipCount: {
-    color: '#394456',
-    fontSize: 7,
+    color: '#596579',
+    fontSize: 9,
     fontWeight: '800',
   },
 

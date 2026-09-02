@@ -597,7 +597,7 @@ export default function ExploreScreen() {
           .toLowerCase();
 
       if (!keyword) {
-        return users;
+        return [];
       }
 
       return users.filter(

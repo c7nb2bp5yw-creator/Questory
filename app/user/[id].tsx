@@ -22,6 +22,7 @@ type Profile = {
   bio: string | null;
   adventure_type: string | null;
   avatar_url: string | null;
+  fixed_quest_progress: number;
 };
 
 type QuestInfo = {
@@ -176,7 +177,8 @@ export default function UserProfileScreen() {
               username,
               bio,
               adventure_type,
-              avatar_url
+              avatar_url,
+              fixed_quest_progress
             `,
           )
           .eq('id', targetUserId)
@@ -213,7 +215,13 @@ export default function UserProfileScreen() {
             ?.trim()
             .toUpperCase();
 
-        if (adventureType) {
+        const fixedQuestProgress =
+          loadedProfile.fixed_quest_progress ?? 0;
+
+        if (
+          adventureType &&
+          fixedQuestProgress < 20
+        ) {
           const {
             data: questData,
             error: questError,
@@ -233,10 +241,10 @@ export default function UserProfileScreen() {
               'adventure_type',
               adventureType,
             )
-            .order('number', {
-              ascending: false,
-            })
-            .limit(1)
+            .eq(
+              'sequence',
+              fixedQuestProgress + 1,
+            )
             .maybeSingle();
 
           if (questError) {

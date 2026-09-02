@@ -622,30 +622,40 @@ export default function HomeScreen() {
            * NEXT QUEST以外から
            * OTHER QUESTSを3件取得
            */
-          let otherQuestQuery =
-            supabase
-              .from('quests')
-              .select(
-                'id, number, title, description, difficulty, estimated_time, adventure_type',
-              )
-              .order('number', {
-                ascending: false,
-              })
-              .limit(3);
-
-          if (mainQuest) {
-            otherQuestQuery =
-              otherQuestQuery.neq(
-                'id',
-                mainQuest.id,
-              );
-          }
-
           const {
-            data: otherQuestData,
+            data: otherQuestCandidates,
             error: otherQuestError,
-          } =
-            await otherQuestQuery;
+          } = await supabase
+            .from('quests')
+            .select(
+              'id, number, title, description, difficulty, estimated_time, adventure_type, sequence',
+            )
+            .order('number', {
+              ascending: false,
+            });
+
+          const otherQuestData =
+            (otherQuestCandidates ?? [])
+              .filter((quest) => {
+                if (
+                  mainQuest &&
+                  quest.id === mainQuest.id
+                ) {
+                  return false;
+                }
+
+                const questAdventureType =
+                  quest.adventure_type
+                    ?.trim()
+                    .toUpperCase();
+
+                const isOwnFixedQuest =
+                  questAdventureType === adventureType &&
+                  quest.sequence !== null;
+
+                return !isOwnFixedQuest;
+              })
+              .slice(0, 3);
 
           if (otherQuestError) {
             console.log(

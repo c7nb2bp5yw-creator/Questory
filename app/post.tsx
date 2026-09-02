@@ -259,6 +259,29 @@ export default function PostScreen() {
         if (mainCompletionError) {
           throw mainCompletionError;
         }
+      } else if (questMode === 'coop') {
+        if (!collaborationId) {
+          throw new Error(
+            'CO-OP QUESTの情報が見つかりません。',
+          );
+        }
+
+        const {
+          error: coopCompletionError,
+        } = await supabase.rpc(
+          'complete_coop_quest',
+          {
+            p_collaboration_id:
+              collaborationId,
+            p_caption:
+              caption.trim() || null,
+            p_photo_url: photoUrl,
+          },
+        );
+
+        if (coopCompletionError) {
+          throw coopCompletionError;
+        }
       } else {
         const { error: completionError } =
           await supabase

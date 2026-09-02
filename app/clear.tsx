@@ -1,13 +1,22 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
 import {
-    Image,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  router,
+  useLocalSearchParams,
+} from 'expo-router';
+
+import React, {
+  useEffect,
+  useState,
+} from 'react';
+
+import {
+  Alert,
+  Image,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 import { supabase } from '../lib/supabase';
@@ -20,6 +29,7 @@ type QuestInfo = {
 
 type Completion = {
   id: string;
+  user_id: string;
   caption: string | null;
   photo_url: string | null;
   completed_at: string;
@@ -38,6 +48,12 @@ export default function ClearScreen() {
   const [loading, setLoading] =
     useState(true);
 
+  const [currentUserId, setCurrentUserId] =
+    useState<string | null>(null);
+
+  const [isDeleting, setIsDeleting] =
+    useState(false);
+
   useEffect(() => {
     const loadCompletion = async () => {
       if (!completionId) {
@@ -47,9 +63,6 @@ export default function ClearScreen() {
 
       /*
        * ログイン確認
-       *
-       * CLEARはログイン済みユーザーだけ
-       * 閲覧できる。
        */
       const {
         data: { user },
@@ -66,12 +79,17 @@ export default function ClearScreen() {
         return;
       }
 
+      setCurrentUserId(user.id);
+
       /*
        * CLEAR詳細取得
        *
        * 自分のCLEARだけではなく、
        * 他ユーザーの公開CLEARも
        * completionIdから取得する。
+       *
+       * user_idも取得して、
+       * 本人のCLEARだけDELETEを表示する。
        */
       const { data, error } =
         await supabase
@@ -79,6 +97,7 @@ export default function ClearScreen() {
           .select(
             `
               id,
+              user_id,
               caption,
               photo_url,
               completed_at,
@@ -124,6 +143,81 @@ export default function ClearScreen() {
     }
 
     return completion.quest;
+  };
+
+  /*
+   * CLEAR RECORD DELETE
+   *
+   * 削除するのはquest_completionsだけ。
+   * QUEST本体やfixed_quest_progressは変更しない。
+   */
+  const deleteCompletion = () => {
+    if (
+      !completion ||
+      !currentUserId ||
+      completion.user_id !== currentUserId ||
+      isDeleting
+    ) {
+      return;
+    }
+
+    Alert.alert(
+      'QUESTの記録を削除しますか？',
+      '写真やMEMORYを含むこのCLEAR記録が削除されます。この操作は元に戻せません。',
+      [
+        {
+          text: '戻る',
+          style: 'cancel',
+        },
+        {
+          text: '削除',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+
+            try {
+              const { error } =
+                await supabase
+                  .from('quest_completions')
+                  .delete()
+                  .eq('id', completion.id)
+                  .eq(
+                    'user_id',
+                    currentUserId,
+                  );
+
+              if (error) {
+                console.log(
+                  'DELETE CLEAR ERROR:',
+                  error,
+                );
+
+                Alert.alert(
+                  '削除できませんでした',
+                  '時間をおいてもう一度お試しください。',
+                );
+
+                return;
+              }
+
+              router.back();
+            } catch (error) {
+              console.log(
+                'DELETE CLEAR ACTION ERROR:',
+                error,
+              );
+
+              Alert.alert(
+                'エラー',
+                '削除できませんでした。',
+              );
+            } finally {
+              setIsDeleting(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   if (loading) {
@@ -209,6 +303,9 @@ export default function ClearScreen() {
   const date = new Date(
     completion.completed_at,
   ).toLocaleDateString('ja-JP');
+
+  const isOwnCompletion =
+    currentUserId === completion.user_id;
 
   return (
     <SafeAreaView
@@ -335,6 +432,29 @@ export default function ClearScreen() {
             {date}
           </Text>
         </View>
+
+        {isOwnCompletion && (
+          <Pressable
+            style={[
+              styles.deleteButton,
+              isDeleting && {
+                opacity: 0.4,
+              },
+            ]}
+            onPress={deleteCompletion}
+            disabled={isDeleting}
+          >
+            <Text
+              style={
+                styles.deleteButtonText
+              }
+            >
+              {isDeleting
+                ? 'DELETING...'
+                : 'DELETE QUEST'}
+            </Text>
+          </Pressable>
+        )}
 
         <View style={styles.footer}>
           <Text
@@ -546,6 +666,23 @@ const styles = StyleSheet.create({
     color: '#DCE1E8',
     fontSize: 10,
     fontWeight: '800',
+  },
+
+  deleteButton: {
+    alignSelf: 'center',
+    marginTop: 30,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#5A3038',
+    borderRadius: 12,
+  },
+
+  deleteButtonText: {
+    color: '#A95C68',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.3,
   },
 
   footer: {

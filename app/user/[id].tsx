@@ -36,6 +36,8 @@ type QuestInfo = {
 
 type Completion = {
   id: string;
+  quest_id: string | null;
+  generated_quest_id: string | null;
   caption: string | null;
   photo_url: string | null;
   completed_at: string;
@@ -389,6 +391,9 @@ export default function UserProfileScreen() {
 
         /*
          * 相手のQuest履歴
+         *
+         * 固定QUEST / AI QUESTの
+         * 両方を取得する。
          */
         const {
           data: completionData,
@@ -398,15 +403,11 @@ export default function UserProfileScreen() {
           .select(
             `
               id,
+              quest_id,
+              generated_quest_id,
               caption,
               photo_url,
-              completed_at,
-              quest:quests (
-                id,
-                number,
-                title,
-                description
-              )
+              completed_at
             `,
           )
           .eq(
@@ -428,15 +429,158 @@ export default function UserProfileScreen() {
         );
 
         if (
-          !completionError &&
-          completionData
+          completionError ||
+          !completionData
         ) {
-          setCompletions(
-            completionData as unknown as Completion[],
-          );
-        } else {
           setCompletions([]);
+        } else {
+          const fixedQuestIds = [
+            ...new Set(
+              completionData
+                .map(
+                  (completion) =>
+                    completion.quest_id,
+                )
+                .filter(
+                  (id): id is string =>
+                    Boolean(id),
+                ),
+            ),
+          ];
+
+          const generatedQuestIds = [
+            ...new Set(
+              completionData
+                .map(
+                  (completion) =>
+                    completion
+                      .generated_quest_id,
+                )
+                .filter(
+                  (id): id is string =>
+                    Boolean(id),
+                ),
+            ),
+          ];
+
+          const [
+            fixedQuestResult,
+            generatedQuestResult,
+          ] = await Promise.all([
+            fixedQuestIds.length > 0
+              ? supabase
+                  .from('quests')
+                  .select(
+                    `
+                      id,
+                      number,
+                      title,
+                      description
+                    `,
+                  )
+                  .in(
+                    'id',
+                    fixedQuestIds,
+                  )
+              : Promise.resolve({
+                  data: [],
+                  error: null,
+                }),
+
+            generatedQuestIds.length > 0
+              ? supabase
+                  .from(
+                    'generated_quests',
+                  )
+                  .select(
+                    `
+                      id,
+                      title,
+                      description
+                    `,
+                  )
+                  .in(
+                    'id',
+                    generatedQuestIds,
+                  )
+              : Promise.resolve({
+                  data: [],
+                  error: null,
+                }),
+          ]);
+
+          if (fixedQuestResult.error) {
+            console.log(
+              'OTHER USER FIXED QUEST ERROR:',
+              fixedQuestResult.error,
+            );
+          }
+
+          if (
+            generatedQuestResult.error
+          ) {
+            console.log(
+              'OTHER USER GENERATED QUEST ERROR:',
+              generatedQuestResult.error,
+            );
+          }
+
+          const fixedQuestMap =
+            new Map(
+              (
+                fixedQuestResult.data ??
+                []
+              ).map((quest) => [
+                quest.id,
+                quest as QuestInfo,
+              ]),
+            );
+
+          const generatedQuestMap =
+            new Map(
+              (
+                generatedQuestResult.data ??
+                []
+              ).map((quest) => [
+                quest.id,
+                {
+                  id: quest.id,
+                  number: 'AI QUEST',
+                  title: quest.title,
+                  description:
+                    quest.description,
+                } as QuestInfo,
+              ]),
+            );
+
+          const mappedCompletions =
+            completionData.map(
+              (completion) => {
+                const quest =
+                  completion.quest_id
+                    ? fixedQuestMap.get(
+                        completion.quest_id,
+                      )
+                    : completion
+                        .generated_quest_id
+                    ? generatedQuestMap.get(
+                        completion
+                          .generated_quest_id,
+                      )
+                    : null;
+
+                return {
+                  ...completion,
+                  quest: quest ?? null,
+                };
+              },
+            );
+
+          setCompletions(
+            mappedCompletions as Completion[],
+          );
         }
+
       } catch (error) {
         console.log(
           'LOAD OTHER PROFILE ERROR:',

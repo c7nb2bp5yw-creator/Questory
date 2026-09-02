@@ -38,7 +38,8 @@ type Quest = {
 type FriendCompletion = {
   id: string;
   user_id: string;
-  quest_id: string;
+  quest_id: string | null;
+  generated_quest_id: string | null;
   caption: string | null;
   photo_url: string | null;
   completed_at: string;
@@ -158,8 +159,7 @@ export default function ExploreScreen() {
         const {
           data: { user },
           error: userError,
-        } =
-          await supabase.auth.getUser();
+        } = await supabase.auth.getUser();
 
         if (userError || !user) {
           console.log(
@@ -168,10 +168,7 @@ export default function ExploreScreen() {
           );
 
           setCurrentUserId(null);
-          setFriendCompletions(
-            [],
-          );
-
+          setFriendCompletions([]);
           return;
         }
 
@@ -202,10 +199,7 @@ export default function ExploreScreen() {
             followError,
           );
 
-          setFriendCompletions(
-            [],
-          );
-
+          setFriendCompletions([]);
           return;
         }
 
@@ -224,10 +218,7 @@ export default function ExploreScreen() {
         if (
           followingIds.length === 0
         ) {
-          setFriendCompletions(
-            [],
-          );
-
+          setFriendCompletions([]);
           return;
         }
 
@@ -235,14 +226,13 @@ export default function ExploreScreen() {
           data: completions,
           error: completionError,
         } = await supabase
-          .from(
-            'quest_completions',
-          )
+          .from('quest_completions')
           .select(
             `
               id,
               user_id,
               quest_id,
+              generated_quest_id,
               caption,
               photo_url,
               completed_at
@@ -265,10 +255,7 @@ export default function ExploreScreen() {
             completionError,
           );
 
-          setFriendCompletions(
-            [],
-          );
-
+          setFriendCompletions([]);
           return;
         }
 
@@ -276,10 +263,7 @@ export default function ExploreScreen() {
           !completions ||
           completions.length === 0
         ) {
-          setFriendCompletions(
-            [],
-          );
-
+          setFriendCompletions([]);
           return;
         }
 
@@ -292,18 +276,38 @@ export default function ExploreScreen() {
           ),
         ];
 
-        const completionQuestIds = [
+        const fixedQuestIds = [
           ...new Set(
-            completions.map(
-              (completion) =>
-                completion.quest_id,
-            ),
+            completions
+              .map(
+                (completion) =>
+                  completion.quest_id,
+              )
+              .filter(
+                (id): id is string =>
+                  Boolean(id),
+              ),
+          ),
+        ];
+
+        const generatedQuestIds = [
+          ...new Set(
+            completions
+              .map(
+                (completion) =>
+                  completion.generated_quest_id,
+              )
+              .filter(
+                (id): id is string =>
+                  Boolean(id),
+              ),
           ),
         ];
 
         const [
           profileResult,
-          questResult,
+          fixedQuestResult,
+          generatedQuestResult,
         ] = await Promise.all([
           supabase
             .from('profiles')
@@ -322,79 +326,112 @@ export default function ExploreScreen() {
               completionUserIds,
             ),
 
-          supabase
-            .from('quests')
-            .select(
-              `
-                id,
-                number,
-                title,
-                description
-              `,
-            )
-            .in(
-              'id',
-              completionQuestIds,
-            ),
+          fixedQuestIds.length > 0
+            ? supabase
+                .from('quests')
+                .select(
+                  `
+                    id,
+                    number,
+                    title,
+                    description
+                  `,
+                )
+                .in(
+                  'id',
+                  fixedQuestIds,
+                )
+            : Promise.resolve({
+                data: [],
+                error: null,
+              }),
+
+          generatedQuestIds.length > 0
+            ? supabase
+                .from(
+                  'generated_quests',
+                )
+                .select(
+                  `
+                    id,
+                    title,
+                    description
+                  `,
+                )
+                .in(
+                  'id',
+                  generatedQuestIds,
+                )
+            : Promise.resolve({
+                data: [],
+                error: null,
+              }),
         ]);
 
-        if (
-          profileResult.error
-        ) {
+        if (profileResult.error) {
           console.log(
             'EXPLORE PROFILE ERROR:',
             profileResult.error,
           );
 
-          setFriendCompletions(
-            [],
-          );
-
+          setFriendCompletions([]);
           return;
         }
 
-        if (questResult.error) {
+        if (fixedQuestResult.error) {
           console.log(
-            'EXPLORE QUEST ERROR:',
-            questResult.error,
+            'EXPLORE FIXED QUEST ERROR:',
+            fixedQuestResult.error,
           );
-
-          setFriendCompletions(
-            [],
-          );
-
-          return;
         }
 
-        const profileMap =
-          new Map(
-            (
-              profileResult.data ??
-              []
-            ).map((profile) => [
-              profile.id,
-              profile as Profile,
-            ]),
+        if (
+          generatedQuestResult.error
+        ) {
+          console.log(
+            'EXPLORE GENERATED QUEST ERROR:',
+            generatedQuestResult.error,
           );
+        }
 
-        const questMap = new Map(
+        const profileMap = new Map(
           (
-            questResult.data ?? []
+            profileResult.data ?? []
+          ).map((profile) => [
+            profile.id,
+            profile as Profile,
+          ]),
+        );
+
+        const fixedQuestMap = new Map(
+          (
+            fixedQuestResult.data ?? []
           ).map((quest) => [
             quest.id,
             quest as Quest,
           ]),
         );
 
+        const generatedQuestMap =
+          new Map(
+            (
+              generatedQuestResult.data ??
+              []
+            ).map((quest) => [
+              quest.id,
+              {
+                id: quest.id,
+                number: 'AI QUEST',
+                title: quest.title,
+                description:
+                  quest.description,
+              } as Quest,
+            ]),
+          );
+
         const result =
           completions
             .map((completion) => {
-              /*
-               * 念のため、
-               * CLEAR側でも
-               * ブロックユーザーを
-               * 再チェック。
-               */
               if (
                 blockedSet.has(
                   completion.user_id,
@@ -409,9 +446,17 @@ export default function ExploreScreen() {
                 );
 
               const quest =
-                questMap.get(
-                  completion.quest_id,
-                );
+                completion.quest_id
+                  ? fixedQuestMap.get(
+                      completion.quest_id,
+                    )
+                  : completion
+                      .generated_quest_id
+                  ? generatedQuestMap.get(
+                      completion
+                        .generated_quest_id,
+                    )
+                  : null;
 
               if (
                 !profile ||
@@ -442,9 +487,7 @@ export default function ExploreScreen() {
           error,
         );
 
-        setFriendCompletions(
-          [],
-        );
+        setFriendCompletions([]);
       } finally {
         setLoadingFriends(false);
       }

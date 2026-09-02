@@ -874,16 +874,28 @@ export default function HomeScreen() {
             setIsSkipping(true);
 
             try {
+              const isGeneratedQuest =
+                recommendedQuest.number ===
+                'AI QUEST';
+
               const {
                 data,
                 error,
-              } = await supabase.rpc(
-                'skip_fixed_main_quest',
-                {
-                  p_quest_id:
-                    recommendedQuest.id,
-                },
-              );
+              } = isGeneratedQuest
+                ? await supabase.rpc(
+                    'skip_generated_main_quest',
+                    {
+                      p_generated_quest_id:
+                        recommendedQuest.id,
+                    },
+                  )
+                : await supabase.rpc(
+                    'skip_fixed_main_quest',
+                    {
+                      p_quest_id:
+                        recommendedQuest.id,
+                    },
+                  );
 
               if (error) {
                 console.log(

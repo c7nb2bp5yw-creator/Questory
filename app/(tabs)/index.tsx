@@ -581,13 +581,58 @@ export default function HomeScreen() {
           }
 
           /*
-           * まずNEXT QUESTを1件取得
+           * NEXT QUEST
+           *
+           * 固定20QUESTまではquestsから取得。
+           * 20QUEST終了後はAI QUESTを取得 / 生成する。
            */
-          const {
-            data: recommendedData,
-            error: recommendedError,
-          } =
-            await supabase
+          let mainQuest: Quest | null = null;
+
+          if (
+            (profile.fixed_quest_progress ?? 0) >= 20
+          ) {
+            const {
+              data: generatedResult,
+              error: generatedError,
+            } = await supabase.functions.invoke(
+              'generate-quest',
+            );
+
+            if (generatedError) {
+              console.log(
+                'AI QUEST GENERATE ERROR:',
+                generatedError,
+              );
+
+              setRecommendedQuest(null);
+            } else {
+              const generatedQuest =
+                generatedResult?.quest;
+
+              if (generatedQuest) {
+                mainQuest = {
+                  id: generatedQuest.id,
+                  number: 'AI QUEST',
+                  title: generatedQuest.title,
+                  description:
+                    generatedQuest.description,
+                  difficulty:
+                    generatedQuest.difficulty,
+                  estimated_time:
+                    generatedQuest.estimated_time,
+                  adventure_type:
+                    generatedQuest.category ??
+                    adventureType,
+                };
+              }
+
+              setRecommendedQuest(mainQuest);
+            }
+          } else {
+            const {
+              data: recommendedData,
+              error: recommendedError,
+            } = await supabase
               .from('quests')
               .select(
                 'id, number, title, description, difficulty, estimated_time, adventure_type',
@@ -602,21 +647,22 @@ export default function HomeScreen() {
               )
               .maybeSingle();
 
-          if (recommendedError) {
-            console.log(
-              'HOME RECOMMENDED QUEST ERROR:',
-              recommendedError,
-            );
+            if (recommendedError) {
+              console.log(
+                'HOME RECOMMENDED QUEST ERROR:',
+                recommendedError,
+              );
 
-            setRecommendedQuest(null);
-            setOtherQuests([]);
-            return;
+              setRecommendedQuest(null);
+              setOtherQuests([]);
+              return;
+            }
+
+            mainQuest =
+              recommendedData as Quest | null;
+
+            setRecommendedQuest(mainQuest);
           }
-
-          const mainQuest =
-            recommendedData as Quest | null;
-
-          setRecommendedQuest(mainQuest);
 
           /*
            * NEXT QUEST以外から

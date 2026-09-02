@@ -59,18 +59,59 @@ export default function PostScreen() {
         return;
       }
 
-      const { data, error } = await supabase
+      // まず固定QUESTを探す
+      const {
+        data: fixedQuest,
+        error: fixedError,
+      } = await supabase
         .from('quests')
         .select(
           'id, number, title, description, difficulty, estimated_time, adventure_type',
         )
         .eq('id', questId)
-        .single();
+        .maybeSingle();
 
-      console.log('POST QUEST:', data);
-      console.log('POST QUEST ERROR:', error);
+      if (fixedQuest) {
+        console.log(
+          'POST FIXED QUEST:',
+          fixedQuest,
+        );
 
-      if (error || !data) {
+        setQuest(fixedQuest);
+        setLoadingQuest(false);
+        return;
+      }
+
+      if (fixedError) {
+        console.log(
+          'POST FIXED QUEST ERROR:',
+          fixedError,
+        );
+      }
+
+      // 固定QUESTに無ければAI QUESTを探す
+      const {
+        data: generatedQuest,
+        error: generatedError,
+      } = await supabase
+        .from('generated_quests')
+        .select(
+          'id, title, description, difficulty, estimated_time, category',
+        )
+        .eq('id', questId)
+        .maybeSingle();
+
+      console.log(
+        'POST AI QUEST:',
+        generatedQuest,
+      );
+
+      console.log(
+        'POST AI QUEST ERROR:',
+        generatedError,
+      );
+
+      if (generatedError || !generatedQuest) {
         Alert.alert(
           'エラー',
           'Questを読み込めませんでした。',
@@ -80,7 +121,17 @@ export default function PostScreen() {
         return;
       }
 
-      setQuest(data);
+      setQuest({
+        id: generatedQuest.id,
+        number: 'AI QUEST',
+        title: generatedQuest.title,
+        description: generatedQuest.description,
+        difficulty: generatedQuest.difficulty,
+        estimated_time:
+          generatedQuest.estimated_time,
+        adventure_type:
+          generatedQuest.category,
+      });
       setLoadingQuest(false);
     };
 
@@ -243,7 +294,28 @@ export default function PostScreen() {
        * other / coop
        * → 今まで通りCLEARのみ保存
        */
-      if (questMode === 'main') {
+      if (
+        questMode === 'main' &&
+        quest.number === 'AI QUEST'
+      ) {
+        // AI QUESTのCLEAR
+        const {
+          error: generatedCompletionError,
+        } = await supabase.rpc(
+          'complete_generated_main_quest',
+          {
+            p_generated_quest_id: quest.id,
+            p_caption:
+              caption.trim() || null,
+            p_photo_url: photoUrl,
+          },
+        );
+
+        if (generatedCompletionError) {
+          throw generatedCompletionError;
+        }
+      } else if (questMode === 'main') {
+        // 固定NEXT QUESTのCLEAR
         const {
           error: mainCompletionError,
         } = await supabase.rpc(

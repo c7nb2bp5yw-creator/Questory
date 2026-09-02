@@ -59,26 +59,59 @@ export default function QuestScreen() {
         return;
       }
 
-      const { data, error } =
-        await supabase
-          .from('quests')
-          .select(
-            'id, number, title, description, difficulty, estimated_time, adventure_type',
-          )
-          .eq('id', targetQuestId)
-          .single();
+      // まず固定QUESTを探す
+      const {
+        data: fixedQuest,
+        error: fixedError,
+      } = await supabase
+        .from('quests')
+        .select(
+          'id, number, title, description, difficulty, estimated_time, adventure_type',
+        )
+        .eq('id', targetQuestId)
+        .maybeSingle();
+
+      if (fixedQuest) {
+        console.log(
+          'DETAIL FIXED QUEST:',
+          fixedQuest,
+        );
+
+        setQuest(fixedQuest);
+        setIsLoading(false);
+        return;
+      }
+
+      if (fixedError) {
+        console.log(
+          'DETAIL FIXED QUEST ERROR:',
+          fixedError,
+        );
+      }
+
+      // 固定QUESTに無ければAI QUESTを探す
+      const {
+        data: generatedQuest,
+        error: generatedError,
+      } = await supabase
+        .from('generated_quests')
+        .select(
+          'id, title, description, difficulty, estimated_time, category',
+        )
+        .eq('id', targetQuestId)
+        .maybeSingle();
 
       console.log(
-        'DETAIL QUEST:',
-        data,
+        'DETAIL AI QUEST:',
+        generatedQuest,
       );
 
       console.log(
-        'DETAIL QUEST ERROR:',
-        error,
+        'DETAIL AI QUEST ERROR:',
+        generatedError,
       );
 
-      if (error || !data) {
+      if (generatedError || !generatedQuest) {
         Alert.alert(
           'エラー',
           'Questを読み込めませんでした。',
@@ -88,7 +121,17 @@ export default function QuestScreen() {
         return;
       }
 
-      setQuest(data);
+      setQuest({
+        id: generatedQuest.id,
+        number: 'AI QUEST',
+        title: generatedQuest.title,
+        description: generatedQuest.description,
+        difficulty: generatedQuest.difficulty,
+        estimated_time:
+          generatedQuest.estimated_time,
+        adventure_type:
+          generatedQuest.category,
+      });
       setIsLoading(false);
     };
 

@@ -30,6 +30,8 @@ type QuestInfo = {
 type Completion = {
   id: string;
   user_id: string;
+  quest_id: string | null;
+  generated_quest_id: string | null;
   caption: string | null;
   photo_url: string | null;
   completed_at: string;
@@ -98,6 +100,8 @@ export default function ClearScreen() {
             `
               id,
               user_id,
+              quest_id,
+              generated_quest_id,
               caption,
               photo_url,
               completed_at,
@@ -110,6 +114,45 @@ export default function ClearScreen() {
           )
           .eq('id', completionId)
           .single();
+
+      if (
+        !error &&
+        data &&
+        !data.quest &&
+        data.generated_quest_id
+      ) {
+        const {
+          data: generatedQuest,
+          error: generatedQuestError,
+        } = await supabase
+          .from('generated_quests')
+          .select(
+            'title, description',
+          )
+          .eq(
+            'id',
+            data.generated_quest_id,
+          )
+          .maybeSingle();
+
+        if (generatedQuestError) {
+          console.log(
+            'CLEAR GENERATED QUEST ERROR:',
+            generatedQuestError,
+          );
+        }
+
+        if (generatedQuest) {
+          data.quest = [
+            {
+              number: 'AI QUEST',
+              title: generatedQuest.title,
+              description:
+                generatedQuest.description,
+            },
+          ];
+        }
+      }
 
       console.log(
         'CLEAR DETAIL:',

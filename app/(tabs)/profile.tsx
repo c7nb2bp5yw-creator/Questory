@@ -252,6 +252,7 @@ export default function ProfileScreen() {
           `
             id,
             quest_id,
+            generated_quest_id,
             caption,
             photo_url,
             completed_at
@@ -280,45 +281,94 @@ export default function ProfileScreen() {
         return;
       }
 
-      const questIds = [
+      const fixedQuestIds = [
         ...new Set(
-          completions.map(
-            (completion) =>
-              completion.quest_id,
-          ),
+          completions
+            .map(
+              (completion) =>
+                completion.quest_id,
+            )
+            .filter(
+              (id): id is string =>
+                Boolean(id),
+            ),
         ),
       ];
 
-      const {
-        data: quests,
-        error: questsError,
-      } = await supabase
-        .from('quests')
-        .select(
-          `
-            id,
-            number,
-            title,
-            description,
-            difficulty,
-            estimated_time,
-            adventure_type
-          `,
-        )
-        .in('id', questIds);
+      const generatedQuestIds = [
+        ...new Set(
+          completions
+            .map(
+              (completion) =>
+                completion.generated_quest_id,
+            )
+            .filter(
+              (id): id is string =>
+                Boolean(id),
+            ),
+        ),
+      ];
 
-      if (questsError) {
+      const [
+        fixedQuestsResult,
+        generatedQuestsResult,
+      ] = await Promise.all([
+        fixedQuestIds.length > 0
+          ? supabase
+              .from('quests')
+              .select(
+                `
+                  id,
+                  number,
+                  title,
+                  description,
+                  difficulty,
+                  estimated_time,
+                  adventure_type
+                `,
+              )
+              .in('id', fixedQuestIds)
+          : Promise.resolve({
+              data: [],
+              error: null,
+            }),
+
+        generatedQuestIds.length > 0
+          ? supabase
+              .from('generated_quests')
+              .select(
+                `
+                  id,
+                  title,
+                  description,
+                  difficulty,
+                  estimated_time,
+                  category
+                `,
+              )
+              .in('id', generatedQuestIds)
+          : Promise.resolve({
+              data: [],
+              error: null,
+            }),
+      ]);
+
+      if (fixedQuestsResult.error) {
         console.log(
-          'PROFILE QUEST ERROR:',
-          questsError,
+          'PROFILE FIXED QUEST ERROR:',
+          fixedQuestsResult.error,
         );
-
-        setJourney([]);
-        return;
       }
 
-      const questMap = new Map(
-        (quests ?? []).map(
+      if (generatedQuestsResult.error) {
+        console.log(
+          'PROFILE GENERATED QUEST ERROR:',
+          generatedQuestsResult.error,
+        );
+      }
+
+      const fixedQuestMap = new Map(
+        (fixedQuestsResult.data ?? []).map(
           (quest) => [
             quest.id,
             quest,
@@ -326,19 +376,52 @@ export default function ProfileScreen() {
         ),
       );
 
+      const generatedQuestMap = new Map(
+        (generatedQuestsResult.data ?? []).map(
+          (quest) => [
+            quest.id,
+            {
+              id: quest.id,
+              number: 'AI QUEST',
+              title: quest.title,
+              description: quest.description,
+              difficulty: quest.difficulty,
+              estimated_time:
+                quest.estimated_time,
+              adventure_type:
+                quest.category ?? '',
+            },
+          ],
+        ),
+      );
+
       const result = completions
         .map((completion) => {
           const quest =
-            questMap.get(
-              completion.quest_id,
-            );
+            completion.quest_id
+              ? fixedQuestMap.get(
+                  completion.quest_id,
+                )
+              : completion.generated_quest_id
+              ? generatedQuestMap.get(
+                  completion.generated_quest_id,
+                )
+              : null;
 
           if (!quest) {
             return null;
           }
 
           return {
-            ...completion,
+            id: completion.id,
+            quest_id:
+              completion.quest_id ??
+              completion.generated_quest_id ??
+              '',
+            caption: completion.caption,
+            photo_url: completion.photo_url,
+            completed_at:
+              completion.completed_at,
             quest,
           };
         })
@@ -473,7 +556,7 @@ export default function ProfileScreen() {
             arrayBuffer,
             {
               contentType: mimeType,
-              upsert: true,
+              upsert: false,
             },
           );
 

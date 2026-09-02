@@ -948,21 +948,6 @@ export default function HomeScreen() {
               </View>
             </Pressable>
 
-            <View
-              style={styles.levelBox}
-            >
-              <Text
-                style={styles.levelLabel}
-              >
-                LV
-              </Text>
-
-              <Text
-                style={styles.levelNumber}
-              >
-                07
-              </Text>
-            </View>
           </View>
         </View>
 
@@ -1482,37 +1467,6 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* STREAK */}
-
-        <View
-          style={styles.streakCard}
-        >
-          <View>
-            <Text
-              style={styles.streakLabel}
-            >
-              ADVENTURE STREAK
-            </Text>
-
-            <Text
-              style={styles.streakNumber}
-            >
-              7 DAYS
-            </Text>
-
-            <Text
-              style={styles.streakText}
-            >
-              7日連続でQUEST CLEAR中
-            </Text>
-          </View>
-
-          <Text
-            style={styles.streakIcon}
-          >
-            ✦
-          </Text>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -1610,26 +1564,6 @@ const styles = StyleSheet.create({
     borderColor: '#080B12',
   },
 
-  levelBox: {
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#293345',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-
-  levelLabel: {
-    color: '#596579',
-    fontSize: 7,
-    fontWeight: '900',
-  },
-
-  levelNumber: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '900',
-  },
 
   greeting: {
     marginTop: 55,
@@ -1958,40 +1892,4 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 
-  streakCard: {
-    marginTop: 28,
-    backgroundColor: '#111722',
-    borderWidth: 1,
-    borderColor: '#202838',
-    borderRadius: 20,
-    padding: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-
-  streakLabel: {
-    color: '#687386',
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-  },
-
-  streakNumber: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '900',
-    marginTop: 5,
-  },
-
-  streakText: {
-    color: '#596579',
-    fontSize: 9,
-    marginTop: 5,
-  },
-
-  streakIcon: {
-    color: '#8ECAFF',
-    fontSize: 30,
-  },
 });

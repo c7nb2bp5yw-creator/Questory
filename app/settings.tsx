@@ -32,6 +32,10 @@ export default function SettingsScreen() {
     router.replace('/login');
   };
 
+  const openAccount = () => {
+    router.push('/account' as any);
+  };
+
   const openBlockedUsers = () => {
     router.push('/blocked-users' as any);
   };
@@ -42,6 +46,10 @@ export default function SettingsScreen() {
 
   const openPrivacyPolicy = () => {
     router.push('/privacy-policy' as any);
+  };
+
+  const openSupport = () => {
+    router.push('/support' as any);
   };
 
   const openAbout = () => {
@@ -134,14 +142,17 @@ export default function SettingsScreen() {
         </Text>
 
         <View style={styles.card}>
-          <Pressable style={styles.menuRow}>
+          <Pressable
+            style={styles.menuRow}
+            onPress={openAccount}
+          >
             <View style={styles.rowText}>
               <Text style={styles.rowTitle}>
                 アカウント
               </Text>
 
               <Text style={styles.rowDescription}>
-                アカウント情報を管理
+                アカウント情報・アカウント削除
               </Text>
             </View>
 
@@ -207,6 +218,27 @@ export default function SettingsScreen() {
             <Text style={styles.rowTitle}>
               プライバシーポリシー
             </Text>
+
+            <Text style={styles.arrow}>
+              →
+            </Text>
+          </Pressable>
+
+          <View style={styles.line} />
+
+          <Pressable
+            style={styles.menuRow}
+            onPress={openSupport}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>
+                お問い合わせ
+              </Text>
+
+              <Text style={styles.rowDescription}>
+                不具合・ご要望・アカウントに関するお問い合わせ
+              </Text>
+            </View>
 
             <Text style={styles.arrow}>
               →

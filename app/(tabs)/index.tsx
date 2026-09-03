@@ -665,7 +665,7 @@ export default function HomeScreen() {
           let mainQuest: Quest | null = null;
 
           if (
-            (profile.fixed_quest_progress ?? 0) >= 20
+            (profile.fixed_quest_progress ?? 0) >= 10
           ) {
             const {
               data: generatedResult,
@@ -766,16 +766,10 @@ export default function HomeScreen() {
                   return false;
                 }
 
-                const questAdventureType =
-                  quest.adventure_type
-                    ?.trim()
-                    .toUpperCase();
-
-                const isOwnFixedQuest =
-                  questAdventureType === adventureType &&
+                const isFixedQuest =
                   quest.sequence !== null;
 
-                return !isOwnFixedQuest;
+                return !isFixedQuest;
               })
               .slice(0, 3);
 

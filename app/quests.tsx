@@ -268,6 +268,15 @@ export default function QuestsScreen() {
         </Pressable>
 
         <Pressable
+          style={styles.skipButton}
+          onPress={() => router.replace('/(tabs)' as any)}
+        >
+          <Text style={styles.skipButtonText}>
+            GO TO HOME
+          </Text>
+        </Pressable>
+
+        <Pressable
           style={[
             styles.skipButton,
             skipCount >= 2 && styles.skipDisabled,

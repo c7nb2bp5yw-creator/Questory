@@ -222,7 +222,7 @@ export default function UserProfileScreen() {
 
         if (
           adventureType &&
-          fixedQuestProgress < 20
+          fixedQuestProgress < 10
         ) {
           const {
             data: questData,

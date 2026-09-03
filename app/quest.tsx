@@ -59,7 +59,82 @@ export default function QuestScreen() {
         return;
       }
 
-      // まず固定QUESTを探す
+      /*
+       * AI CO-OP QUEST
+       *
+       * 他人のgenerated_questsは直接SELECTせず、
+       * collaborationIdを使って専用RPCから取得する。
+       */
+      if (questMode === 'coop') {
+        if (!collaborationId) {
+          Alert.alert(
+            'エラー',
+            'CO-OP QUESTの情報が見つかりませんでした。',
+          );
+
+          setIsLoading(false);
+          return;
+        }
+
+        const {
+          data: coopQuestData,
+          error: coopQuestError,
+        } = await supabase.rpc(
+          'get_my_generated_coop_quest',
+          {
+            p_collaboration_id:
+              collaborationId,
+          },
+        );
+
+        if (coopQuestError) {
+          console.log(
+            'DETAIL AI CO-OP QUEST ERROR:',
+            coopQuestError,
+          );
+        }
+
+        const coopQuest =
+          Array.isArray(coopQuestData) &&
+          coopQuestData.length > 0
+            ? coopQuestData[0]
+            : null;
+
+        if (
+          coopQuestError ||
+          !coopQuest ||
+          coopQuest.generated_quest_id !==
+            targetQuestId
+        ) {
+          Alert.alert(
+            'エラー',
+            'CO-OP QUESTを読み込めませんでした。',
+          );
+
+          setIsLoading(false);
+          return;
+        }
+
+        setQuest({
+          id: coopQuest.generated_quest_id,
+          number: 'AI QUEST',
+          title: coopQuest.title,
+          description: coopQuest.description,
+          difficulty:
+            coopQuest.difficulty ?? '',
+          estimated_time:
+            coopQuest.estimated_time ?? '',
+          adventure_type:
+            coopQuest.category ?? '',
+        });
+
+        setIsLoading(false);
+        return;
+      }
+
+      /*
+       * 通常の固定QUEST
+       */
       const {
         data: fixedQuest,
         error: fixedError,
@@ -89,7 +164,9 @@ export default function QuestScreen() {
         );
       }
 
-      // 固定QUESTに無ければAI QUESTを探す
+      /*
+       * 自分のAI QUEST
+       */
       const {
         data: generatedQuest,
         error: generatedError,
@@ -111,7 +188,10 @@ export default function QuestScreen() {
         generatedError,
       );
 
-      if (generatedError || !generatedQuest) {
+      if (
+        generatedError ||
+        !generatedQuest
+      ) {
         Alert.alert(
           'エラー',
           'Questを読み込めませんでした。',
@@ -125,18 +205,25 @@ export default function QuestScreen() {
         id: generatedQuest.id,
         number: 'AI QUEST',
         title: generatedQuest.title,
-        description: generatedQuest.description,
-        difficulty: generatedQuest.difficulty,
+        description:
+          generatedQuest.description,
+        difficulty:
+          generatedQuest.difficulty,
         estimated_time:
           generatedQuest.estimated_time,
         adventure_type:
           generatedQuest.category,
       });
+
       setIsLoading(false);
     };
 
     loadQuest();
-  }, [targetQuestId]);
+  }, [
+    targetQuestId,
+    questMode,
+    collaborationId,
+  ]);
 
   if (isLoading) {
     return (

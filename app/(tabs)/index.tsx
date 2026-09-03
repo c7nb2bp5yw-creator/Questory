@@ -206,6 +206,10 @@ export default function HomeScreen() {
 
   /*
    * CO-OP QUESTS
+   *
+   * AI QUESTのみ。
+   * 他人のgenerated_questsを直接SELECTせず、
+   * 専用RPCから自分が参加中のCO-OPだけ取得する。
    */
   const loadCoOpQuests = useCallback(async () => {
     setIsLoadingCoOp(true);
@@ -227,154 +231,52 @@ export default function HomeScreen() {
       }
 
       const {
-        data: collaborations,
-        error: collaborationError,
-      } = await supabase
-        .from('quest_collaborations')
-        .select(
-          'id, owner_id, quest_id',
-        )
-        .eq('collaborator_id', user.id)
-        .not('quest_id', 'is', null)
-        .order('created_at', {
-          ascending: false,
-        });
-
-      if (collaborationError) {
-        console.log(
-          'HOME CO-OP ERROR:',
-          collaborationError,
-        );
-
-        setCoOpQuests([]);
-        return;
-      }
-
-      if (
-        !collaborations ||
-        collaborations.length === 0
-      ) {
-        setCoOpQuests([]);
-        return;
-      }
-
-      const ownerIds = [
-        ...new Set(
-          collaborations.map(
-            (item) => item.owner_id,
-          ),
-        ),
-      ];
-
-      const questIds = [
-        ...new Set(
-          collaborations
-            .map((item) => item.quest_id)
-            .filter(
-              (questId): questId is string =>
-                !!questId,
-            ),
-        ),
-      ];
-
-      const [
-        profileResult,
-        questResult,
-      ] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('id, name, username')
-          .in('id', ownerIds),
-
-        supabase
-          .from('quests')
-          .select(
-            'id, number, title, description, difficulty, estimated_time, adventure_type',
-          )
-          .in('id', questIds),
-      ]);
-
-      if (profileResult.error) {
-        console.log(
-          'CO-OP PROFILE ERROR:',
-          profileResult.error,
-        );
-      }
-
-      if (questResult.error) {
-        console.log(
-          'CO-OP QUEST ERROR:',
-          questResult.error,
-        );
-      }
-
-      if (
-        profileResult.error ||
-        questResult.error
-      ) {
-        setCoOpQuests([]);
-        return;
-      }
-
-      const profileMap = new Map(
-        (profileResult.data ?? []).map(
-          (profile) => [
-            profile.id,
-            profile,
-          ],
-        ),
+        data: coopData,
+        error: coopError,
+      } = await supabase.rpc(
+        'get_my_generated_coop_quests',
       );
 
-      const questMap = new Map(
-        (questResult.data ?? []).map(
-          (quest) => [
-            quest.id,
-            quest as Quest,
-          ],
-        ),
-      );
+      if (coopError) {
+        console.log(
+          'HOME AI CO-OP ERROR:',
+          coopError,
+        );
 
-      const result = collaborations
-        .map((item) => {
-          if (!item.quest_id) {
-            return null;
-          }
+        setCoOpQuests([]);
+        return;
+      }
 
-          const owner = profileMap.get(
+      const result: CoOpQuest[] =
+        (coopData ?? []).map((item: any) => ({
+          collaborationId:
+            item.collaboration_id,
+          ownerId:
             item.owner_id,
-          );
-
-          const quest = questMap.get(
-            item.quest_id,
-          );
-
-          if (!owner || !quest) {
-            return null;
-          }
-
-          return {
-            collaborationId: item.id,
-            ownerId: item.owner_id,
-            ownerName:
-              owner.name ||
-              owner.username ||
-              'ADVENTURER',
-            ownerUsername:
-              owner.username,
-            quest,
-          };
-        })
-        .filter(
-          (
-            item,
-          ): item is CoOpQuest =>
-            item !== null,
-        );
+          ownerName:
+            item.owner_name ||
+            item.owner_username ||
+            'ADVENTURER',
+          ownerUsername:
+            item.owner_username,
+          quest: {
+            id: item.generated_quest_id,
+            number: 'AI QUEST',
+            title: item.title,
+            description: item.description,
+            difficulty:
+              item.difficulty ?? '',
+            estimated_time:
+              item.estimated_time ?? '',
+            adventure_type:
+              item.category ?? '',
+          },
+        }));
 
       setCoOpQuests(result);
     } catch (error) {
       console.log(
-        'LOAD CO-OP ERROR:',
+        'LOAD AI CO-OP ERROR:',
         error,
       );
 

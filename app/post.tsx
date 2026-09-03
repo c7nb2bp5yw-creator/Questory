@@ -59,7 +59,79 @@ export default function PostScreen() {
         return;
       }
 
-      // まず固定QUESTを探す
+      /*
+       * AI CO-OP QUEST
+       */
+      if (questMode === 'coop') {
+        if (!collaborationId) {
+          Alert.alert(
+            'エラー',
+            'CO-OP QUESTの情報が見つかりませんでした。',
+          );
+
+          setLoadingQuest(false);
+          return;
+        }
+
+        const {
+          data: coopQuestData,
+          error: coopQuestError,
+        } = await supabase.rpc(
+          'get_my_generated_coop_quest',
+          {
+            p_collaboration_id:
+              collaborationId,
+          },
+        );
+
+        if (coopQuestError) {
+          console.log(
+            'POST AI CO-OP QUEST ERROR:',
+            coopQuestError,
+          );
+        }
+
+        const coopQuest =
+          Array.isArray(coopQuestData) &&
+          coopQuestData.length > 0
+            ? coopQuestData[0]
+            : null;
+
+        if (
+          coopQuestError ||
+          !coopQuest ||
+          coopQuest.generated_quest_id !==
+            questId
+        ) {
+          Alert.alert(
+            'エラー',
+            'CO-OP QUESTを読み込めませんでした。',
+          );
+
+          setLoadingQuest(false);
+          return;
+        }
+
+        setQuest({
+          id: coopQuest.generated_quest_id,
+          number: 'AI QUEST',
+          title: coopQuest.title,
+          description: coopQuest.description,
+          difficulty:
+            coopQuest.difficulty ?? '',
+          estimated_time:
+            coopQuest.estimated_time ?? '',
+          adventure_type:
+            coopQuest.category ?? '',
+        });
+
+        setLoadingQuest(false);
+        return;
+      }
+
+      /*
+       * 通常の固定QUEST
+       */
       const {
         data: fixedQuest,
         error: fixedError,
@@ -89,7 +161,9 @@ export default function PostScreen() {
         );
       }
 
-      // 固定QUESTに無ければAI QUESTを探す
+      /*
+       * 自分のAI QUEST
+       */
       const {
         data: generatedQuest,
         error: generatedError,
@@ -111,7 +185,10 @@ export default function PostScreen() {
         generatedError,
       );
 
-      if (generatedError || !generatedQuest) {
+      if (
+        generatedError ||
+        !generatedQuest
+      ) {
         Alert.alert(
           'エラー',
           'Questを読み込めませんでした。',
@@ -125,18 +202,25 @@ export default function PostScreen() {
         id: generatedQuest.id,
         number: 'AI QUEST',
         title: generatedQuest.title,
-        description: generatedQuest.description,
-        difficulty: generatedQuest.difficulty,
+        description:
+          generatedQuest.description,
+        difficulty:
+          generatedQuest.difficulty,
         estimated_time:
           generatedQuest.estimated_time,
         adventure_type:
           generatedQuest.category,
       });
+
       setLoadingQuest(false);
     };
 
     loadQuest();
-  }, [questId]);
+  }, [
+    questId,
+    questMode,
+    collaborationId,
+  ]);
 
   /*
    * 写真を選ぶ
@@ -364,6 +448,13 @@ export default function PostScreen() {
           throw mainCompletionError;
         }
       } else if (questMode === 'coop') {
+        /*
+         * AI CO-OP CLEAR
+         *
+         * collaborator本人だけにCLEARを保存。
+         * ownerの進捗・現在QUEST・AI学習には触れない。
+         * 成功後、collaborationはDB側で削除される。
+         */
         if (!collaborationId) {
           throw new Error(
             'CO-OP QUESTの情報が見つかりません。',
@@ -373,13 +464,14 @@ export default function PostScreen() {
         const {
           error: coopCompletionError,
         } = await supabase.rpc(
-          'complete_coop_quest',
+          'complete_generated_coop_quest',
           {
-            p_collaboration_id:
-              collaborationId,
+            p_generated_quest_id:
+              quest.id,
             p_caption:
               caption.trim() || null,
-            p_photo_url: photoUrl,
+            p_photo_url:
+              photoUrl,
           },
         );
 

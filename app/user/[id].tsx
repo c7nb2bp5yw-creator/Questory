@@ -211,79 +211,79 @@ export default function UserProfileScreen() {
 
         /*
          * 相手のNEXT QUEST
+         *
+         * CO-OP対象はAI QUESTのみ。
+         * 他人のgenerated_questsを直接SELECTせず、
+         * 専用RPCから「現在の1件だけ」取得する。
          */
-        const adventureType =
-          loadedProfile.adventure_type
-            ?.trim()
-            .toUpperCase();
+        const {
+          data: generatedQuestData,
+          error: generatedQuestError,
+        } = await supabase.rpc(
+          'get_user_current_generated_quest',
+          {
+            p_user_id: targetUserId,
+          },
+        );
 
-        const fixedQuestProgress =
-          loadedProfile.fixed_quest_progress ?? 0;
+        if (generatedQuestError) {
+          console.log(
+            'OTHER USER AI QUEST ERROR:',
+            generatedQuestError,
+          );
 
-        if (
-          adventureType &&
-          fixedQuestProgress < 10
-        ) {
-          const {
-            data: questData,
-            error: questError,
-          } = await supabase
-            .from('quests')
-            .select(
-              `
-                id,
-                number,
-                title,
-                description,
-                difficulty,
-                estimated_time
-              `,
-            )
-            .eq(
-              'adventure_type',
-              adventureType,
-            )
-            .eq(
-              'sequence',
-              fixedQuestProgress + 1,
-            )
-            .maybeSingle();
+          setNextQuest(null);
+          setIsCollaborating(false);
+        } else {
+          const generatedQuest =
+            Array.isArray(generatedQuestData) &&
+            generatedQuestData.length > 0
+              ? generatedQuestData[0]
+              : null;
 
-          if (questError) {
-            console.log(
-              'OTHER USER NEXT QUEST ERROR:',
-              questError,
-            );
-
-            setNextQuest(null);
-          } else {
-            const loadedQuest =
-              questData as QuestInfo | null;
+          if (generatedQuest) {
+            const loadedQuest: QuestInfo = {
+              id: generatedQuest.id,
+              number: 'AI QUEST',
+              title: generatedQuest.title,
+              description:
+                generatedQuest.description,
+              difficulty:
+                generatedQuest.difficulty,
+              estimated_time:
+                generatedQuest.estimated_time,
+            };
 
             setNextQuest(loadedQuest);
 
             /*
-             * このNEXT QUESTに
-             * 自分がすでに協力しているか確認
+             * このAI QUESTに
+             * 自分がすでにCO-OPしているか確認
              */
-            if (
-              loadedQuest &&
-              user.id !== targetUserId
-            ) {
+            if (user.id !== targetUserId) {
               const {
                 data: collaborationData,
                 error: collaborationError,
               } = await supabase
                 .from('quest_collaborations')
                 .select('id')
-                .eq('owner_id', targetUserId)
-                .eq('collaborator_id', user.id)
-                .eq('quest_id', loadedQuest.id)
+                .eq(
+                  'owner_id',
+                  targetUserId,
+                )
+                .eq(
+                  'collaborator_id',
+                  user.id,
+                )
+                .eq(
+                  'generated_quest_id',
+                  loadedQuest.id,
+                )
                 .maybeSingle();
 
               if (collaborationError) {
                 console.log(
-                  'COLLABORATION STATUS ERROR:',
+                  'AI COLLABORATION STATUS ERROR:',
                   collaborationError,
                 );
               }
@@ -294,10 +294,14 @@ export default function UserProfileScreen() {
             } else {
               setIsCollaborating(false);
             }
+          } else {
+            /*
+             * 固定QUEST段階、
+             * またはまだAI QUEST未生成。
+             */
+            setNextQuest(null);
+            setIsCollaborating(false);
           }
-        } else {
-          setNextQuest(null);
-          setIsCollaborating(false);
         }
 
         /*
@@ -975,6 +979,11 @@ export default function UserProfileScreen() {
 
   /*
    * CO-OP QUEST
+   *
+   * AI QUESTのみ対応。
+   * OWNERの承認なしで即参加。
+   * OWNER側には通知だけ送られ、
+   * QUEST進行には影響しない。
    */
   const handleCollaboration = async () => {
     if (
@@ -988,97 +997,42 @@ export default function UserProfileScreen() {
       return;
     }
 
+    if (isCollaborating) {
+      Alert.alert(
+        'すでに協力中です',
+        'このQUESTにはすでに協力しています。',
+      );
+      return;
+    }
+
     setCollaborationLoading(true);
 
     try {
-      /*
-       * 参加直前にもBLOCK状態を確認
-       */
       const {
-        data: blockData,
-        error: blockError,
-      } = await supabase
-        .from('blocks')
-        .select('id')
-        .or(
-          `and(blocker_id.eq.${currentUserId},blocked_id.eq.${targetUserId}),and(blocker_id.eq.${targetUserId},blocked_id.eq.${currentUserId})`,
-        )
-        .limit(1);
-
-      if (blockError) {
-        console.log(
-          'CO-OP BLOCK CHECK ERROR:',
-          blockError,
-        );
-
-        Alert.alert(
-          'エラー',
-          '処理に失敗しました。',
-        );
-
-        return;
-      }
-
-      if (
-        blockData &&
-        blockData.length > 0
-      ) {
-        Alert.alert(
-          '協力できません',
-          'このユーザーとは現在やり取りできません。',
-        );
-
-        return;
-      }
-
-      if (isCollaborating) {
-        Alert.alert(
-          'すでに協力中です',
-          'このQUESTにはすでに協力しています。',
-        );
-
-        return;
-      }
-
-      const {
-        data: collaborationData,
+        data: collaborationId,
         error: collaborationError,
-      } = await supabase
-        .from('quest_collaborations')
-        .insert({
-          owner_id: targetUserId,
-          collaborator_id: currentUserId,
-          quest_id: nextQuest.id,
-        })
-        .select('id')
-        .single();
+      } = await supabase.rpc(
+        'join_generated_coop_quest',
+        {
+          p_owner_id: targetUserId,
+          p_generated_quest_id:
+            nextQuest.id,
+        },
+      );
 
       if (
         collaborationError ||
-        !collaborationData
+        !collaborationId
       ) {
         console.log(
-          'CO-OP INSERT ERROR:',
+          'AI CO-OP JOIN ERROR:',
           collaborationError,
         );
 
-        if (
-          collaborationError?.code ===
-          '23505'
-        ) {
-          setIsCollaborating(true);
-
-          Alert.alert(
-            'すでに協力中です',
-            'このQUESTにはすでに協力しています。',
-          );
-
-          return;
-        }
-
         Alert.alert(
-          'エラー',
-          'QUESTに協力できませんでした。',
+          '協力できませんでした',
+          collaborationError?.message ??
+            'このQUESTには現在協力できません。',
         );
 
         return;
@@ -1090,15 +1044,16 @@ export default function UserProfileScreen() {
         'CO-OP QUEST',
         'このQUESTへの協力を開始しました。',
       );
-    } catch (error) {
+    } catch (error: any) {
       console.log(
-        'CO-OP ACTION ERROR:',
+        'AI CO-OP ACTION ERROR:',
         error,
       );
 
       Alert.alert(
         'エラー',
-        'QUESTに協力できませんでした。',
+        error?.message ??
+          'QUESTに協力できませんでした。',
       );
     } finally {
       setCollaborationLoading(false);

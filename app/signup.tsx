@@ -14,13 +14,20 @@ import { useAuth } from '@/context/auth';
 
 export default function SignupScreen() {
   const { signUpWithPassword } = useAuth();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] =
+    useState(false);
+  const [errorMessage, setErrorMessage] =
+    useState<string | null>(null);
 
-  const canSubmit = email.trim().length > 0 && password.length > 0;
-  const isDisabled = !canSubmit || isSubmitting;
+  const canSubmit =
+    email.trim().length > 0 &&
+    password.length >= 6;
+
+  const isDisabled =
+    !canSubmit || isSubmitting;
 
   const handleSignup = async () => {
     if (isDisabled) {
@@ -30,13 +37,17 @@ export default function SignupScreen() {
     setErrorMessage(null);
     setIsSubmitting(true);
 
-    const { error } = await signUpWithPassword(email.trim(), password);
+    const { error } =
+      await signUpWithPassword(
+        email.trim(),
+        password,
+      );
 
     setIsSubmitting(false);
 
     if (error) {
       setErrorMessage(
-        '登録に失敗しました。入力内容をご確認ください。'
+        '登録に失敗しました。メールアドレスとパスワードをご確認ください。',
       );
       return;
     }
@@ -51,9 +62,8 @@ export default function SignupScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-
         <Text style={styles.logo}>
-          QUESTORY
+          POSEQ
         </Text>
 
         <Text style={styles.sub}>
@@ -62,7 +72,7 @@ export default function SignupScreen() {
 
         <View style={styles.hero}>
           <Text style={styles.eyebrow}>
-            JOIN QUESTORY
+            JOIN POSEQ
           </Text>
 
           <Text style={styles.title}>
@@ -77,7 +87,6 @@ export default function SignupScreen() {
         </View>
 
         <View style={styles.form}>
-
           <Text style={styles.label}>
             EMAIL
           </Text>
@@ -108,6 +117,9 @@ export default function SignupScreen() {
             editable={!isSubmitting}
           />
 
+          <Text style={styles.passwordHint}>
+            6文字以上で入力してください
+          </Text>
         </View>
 
         {errorMessage && (
@@ -119,22 +131,51 @@ export default function SignupScreen() {
         <Pressable
           style={[
             styles.button,
-            isDisabled && styles.disabledButton,
+            isDisabled &&
+              styles.disabledButton,
           ]}
           onPress={handleSignup}
+          disabled={isDisabled}
         >
           <Text style={styles.buttonText}>
-            {isSubmitting ? 'SIGNING UP...' : 'SIGN UP'}
+            {isSubmitting
+              ? 'SIGNING UP...'
+              : 'SIGN UP'}
           </Text>
         </Pressable>
+
+        <Text style={styles.agreement}>
+          登録することで
+          {' '}
+          <Link
+            href="/terms"
+            style={styles.agreementLink}
+          >
+            利用規約
+          </Link>
+          {' '}および{' '}
+          <Link
+            href="/privacy-policy"
+            style={styles.agreementLink}
+          >
+            プライバシーポリシー
+          </Link>
+          {'\n'}
+          に同意したものとします。
+        </Text>
 
         <View style={styles.switchRow}>
           <Text style={styles.switchText}>
             すでにアカウントをお持ちですか？
           </Text>
 
-          <Link href="/login" style={styles.switchLink}>
-            <Text style={styles.switchLinkText}>
+          <Link
+            href="/login"
+            style={styles.switchLink}
+          >
+            <Text
+              style={styles.switchLinkText}
+            >
               ログイン
             </Text>
           </Link>
@@ -143,7 +184,6 @@ export default function SignupScreen() {
         <Text style={styles.footer}>
           YOUR ADVENTURE. YOUR STORY.
         </Text>
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -226,6 +266,14 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
+  passwordHint: {
+    color: '#586477',
+    fontSize: 9,
+    fontWeight: '700',
+    marginTop: -10,
+    marginBottom: 20,
+  },
+
   errorText: {
     color: '#D98282',
     fontSize: 11,
@@ -250,6 +298,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.5,
+  },
+
+  agreement: {
+    color: '#687386',
+    fontSize: 9,
+    lineHeight: 17,
+    textAlign: 'center',
+    marginTop: 17,
+  },
+
+  agreementLink: {
+    color: '#8ECAFF',
+    fontWeight: '900',
   },
 
   switchRow: {

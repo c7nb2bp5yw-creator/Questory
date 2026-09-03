@@ -694,7 +694,7 @@ export default function ExploreScreen() {
         {/* HEADER */}
 
         <Text style={styles.logo}>
-          QUESTORY
+          POSEQ
         </Text>
 
         <Text style={styles.sub}>

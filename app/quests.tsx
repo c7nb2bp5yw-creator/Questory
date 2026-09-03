@@ -129,7 +129,7 @@ export default function QuestsScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.emptyContainer}>
           <Text style={styles.logo}>
-            QUESTORY
+            POSEQ
           </Text>
 
           <Text style={styles.sub}>
@@ -173,7 +173,7 @@ export default function QuestsScreen() {
         </Pressable>
 
         <Text style={styles.logo}>
-          QUESTORY
+          POSEQ
         </Text>
 
         <Text style={styles.sub}>
@@ -289,7 +289,7 @@ export default function QuestsScreen() {
         <View style={styles.tipCard}>
 
           <Text style={styles.tipLabel}>
-            QUESTORY TIP
+            POSEQ TIP
           </Text>
 
           <Text style={styles.tipTitle}>

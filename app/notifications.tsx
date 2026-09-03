@@ -265,7 +265,7 @@ export default function NotificationsScreen() {
         </Pressable>
 
         <Text style={styles.logo}>
-          QUESTORY
+          POSEQ
         </Text>
 
         <Text style={styles.sub}>

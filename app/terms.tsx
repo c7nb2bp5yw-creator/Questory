@@ -24,7 +24,7 @@ export default function TermsScreen() {
           <Text style={styles.backText}>← BACK</Text>
         </Pressable>
 
-        <Text style={styles.logo}>QUESTORY</Text>
+        <Text style={styles.logo}>POSEQ</Text>
         <Text style={styles.sub}>TERMS OF SERVICE</Text>
 
         <Text style={styles.title}>利用規約</Text>
@@ -34,7 +34,7 @@ export default function TermsScreen() {
         </Text>
 
         <Text style={styles.intro}>
-          本利用規約（以下「本規約」）は、Questory（以下「本サービス」）の利用条件を定めるものです。本サービスを利用する方（以下「ユーザー」）は、本規約に同意した上で本サービスをご利用ください。
+          本利用規約（以下「本規約」）は、POSEQ（以下「本サービス」）の利用条件を定めるものです。本サービスを利用する方（以下「ユーザー」）は、本規約に同意した上で本サービスをご利用ください。
         </Text>
 
         <Section number="01" title="本サービスについて">
@@ -111,7 +111,7 @@ export default function TermsScreen() {
         </Section>
 
         <View style={styles.footer}>
-          <Text style={styles.footerLogo}>QUESTORY</Text>
+          <Text style={styles.footerLogo}>POSEQ</Text>
           <Text style={styles.footerText}>
             GO OUT. FIND YOUR STORY.
           </Text>

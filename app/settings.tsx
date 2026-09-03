@@ -68,7 +68,7 @@ export default function SettingsScreen() {
 
           <View style={styles.headerBrand}>
             <Text style={styles.logo}>
-              QUESTORY
+              POSEQ
             </Text>
 
             <Text style={styles.sub}>
@@ -198,7 +198,7 @@ export default function SettingsScreen() {
             onPress={openAbout}
           >
             <Text style={styles.rowTitle}>
-              Questoryについて
+              POSEQについて
             </Text>
 
             <Text style={styles.arrow}>
@@ -219,7 +219,7 @@ export default function SettingsScreen() {
         </Pressable>
 
         <Text style={styles.version}>
-          QUESTORY v0.1.0
+          POSEQ v1.0.0
         </Text>
       </ScrollView>
     </SafeAreaView>

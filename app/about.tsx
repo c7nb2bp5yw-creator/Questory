@@ -27,7 +27,7 @@ export default function AboutScreen() {
         </Pressable>
 
         <Text style={styles.logo}>
-          QUESTORY
+          POSEQ
         </Text>
 
         <Text style={styles.sub}>
@@ -51,7 +51,7 @@ export default function AboutScreen() {
 
         <View style={styles.messageCard}>
           <Text style={styles.cardLabel}>
-            WHAT IS QUESTORY?
+            WHAT IS POSEQ?
           </Text>
 
           <Text style={styles.messageTitle}>
@@ -59,7 +59,7 @@ export default function AboutScreen() {
           </Text>
 
           <Text style={styles.message}>
-            Questoryは、現実世界で小さなQUESTに挑戦するためのアプリです。
+            POSEQは、現実世界で小さなQUESTに挑戦するためのアプリです。
             {'\n\n'}
             行ったことのない場所へ行く。
             {'\n'}
@@ -101,7 +101,7 @@ export default function AboutScreen() {
             {'\n'}
             街、自然、お店、人との時間。
             {'\n'}
-            現実世界そのものがQuestoryのフィールドです。
+            現実世界そのものがPOSEQのフィールドです。
           </Text>
         </View>
 
@@ -130,7 +130,7 @@ export default function AboutScreen() {
 
         <View style={styles.footer}>
           <Text style={styles.footerLogo}>
-            QUESTORY
+            POSEQ
           </Text>
 
           <Text style={styles.footerText}>
@@ -138,7 +138,7 @@ export default function AboutScreen() {
           </Text>
 
           <Text style={styles.version}>
-            VERSION 0.1.0
+            VERSION 1.0.0
           </Text>
         </View>
       </ScrollView>

@@ -714,7 +714,7 @@ export default function ProfileScreen() {
         <View style={styles.topBar}>
           <View>
             <Text style={styles.logo}>
-              QUESTORY
+              POSEQ
             </Text>
 
             <Text style={styles.sub}>

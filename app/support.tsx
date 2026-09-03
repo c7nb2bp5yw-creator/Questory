@@ -28,7 +28,7 @@ export default function SupportScreen() {
     }
 
     const subject = encodeURIComponent(
-      'Questory お問い合わせ',
+      'POSEQ お問い合わせ',
     );
 
     const url =
@@ -67,7 +67,7 @@ export default function SupportScreen() {
 
           <View style={styles.headerBrand}>
             <Text style={styles.logo}>
-              QUESTORY
+              POSEQ
             </Text>
 
             <Text style={styles.sub}>

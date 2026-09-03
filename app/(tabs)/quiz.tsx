@@ -91,7 +91,7 @@ export default function QuizScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.successContent}>
-          <Text style={styles.logo}>QUESTORY</Text>
+          <Text style={styles.logo}>POSEQ</Text>
 
           <View style={styles.successTop}>
             <Text style={styles.successMark}>✓</Text>
@@ -163,7 +163,7 @@ export default function QuizScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.clearContent}>
-          <Text style={styles.logo}>QUESTORY</Text>
+          <Text style={styles.logo}>POSEQ</Text>
 
           <Text style={styles.smallLabel}>
             COMPLETE QUEST
@@ -174,7 +174,7 @@ export default function QuizScreen() {
           </Text>
 
           <Text style={styles.clearSubtitle}>
-            CLEARした瞬間をQuestoryに残します。
+            CLEARした瞬間をPOSEQに残します。
           </Text>
 
           <Pressable
@@ -248,7 +248,7 @@ export default function QuizScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.questContent}>
-          <Text style={styles.logo}>QUESTORY</Text>
+          <Text style={styles.logo}>POSEQ</Text>
 
           <Text style={styles.smallLabel}>
             {started ? 'QUEST IN PROGRESS' : 'YOUR QUEST'}
@@ -358,7 +358,7 @@ export default function QuizScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.logo}>QUESTORY</Text>
+        <Text style={styles.logo}>POSEQ</Text>
 
         <View style={styles.progressArea}>
           <Text style={styles.progressText}>
@@ -378,7 +378,7 @@ export default function QuizScreen() {
         </View>
 
         <Text style={styles.smallLabel}>
-          QUESTORY DIAGNOSIS
+          POSEQ DIAGNOSIS
         </Text>
 
         <Text style={styles.title}>

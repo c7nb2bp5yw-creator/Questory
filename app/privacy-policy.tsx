@@ -24,7 +24,7 @@ export default function PrivacyPolicyScreen() {
           <Text style={styles.backText}>← BACK</Text>
         </Pressable>
 
-        <Text style={styles.logo}>QUESTORY</Text>
+        <Text style={styles.logo}>POSEQ</Text>
         <Text style={styles.sub}>PRIVACY POLICY</Text>
 
         <Text style={styles.title}>
@@ -36,7 +36,7 @@ export default function PrivacyPolicyScreen() {
         </Text>
 
         <Text style={styles.intro}>
-          Questory（以下「本サービス」）では、ユーザーのプライバシーを尊重し、本サービスの提供に必要な情報を適切に取り扱います。
+          POSEQ（以下「本サービス」）では、ユーザーのプライバシーを尊重し、本サービスの提供に必要な情報を適切に取り扱います。
         </Text>
 
         <Section number="01" title="取得する情報">
@@ -106,7 +106,7 @@ export default function PrivacyPolicyScreen() {
         </Section>
 
         <View style={styles.footer}>
-          <Text style={styles.footerLogo}>QUESTORY</Text>
+          <Text style={styles.footerLogo}>POSEQ</Text>
           <Text style={styles.footerText}>
             GO OUT. FIND YOUR STORY.
           </Text>

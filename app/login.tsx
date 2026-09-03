@@ -51,7 +51,7 @@ export default function LoginScreen() {
       >
 
         <Text style={styles.logo}>
-          QUESTORY
+          POSEQ
         </Text>
 
         <Text style={styles.sub}>
@@ -120,9 +120,19 @@ export default function LoginScreen() {
             isDisabled && styles.disabledButton,
           ]}
           onPress={handleLogin}
+          disabled={isDisabled}
         >
           <Text style={styles.buttonText}>
             {isSubmitting ? 'LOGGING IN...' : 'LOG IN'}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.forgotButton}
+          onPress={() => router.push('/forgot-password' as any)}
+        >
+          <Text style={styles.forgotText}>
+            パスワードを忘れた方
           </Text>
         </Pressable>
 
@@ -248,6 +258,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.5,
+  },
+
+  forgotButton: {
+    alignSelf: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    marginTop: 10,
+  },
+
+  forgotText: {
+    color: '#8ECAFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
 
   switchRow: {

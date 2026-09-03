@@ -78,7 +78,7 @@ export default function OnboardingScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.logo}>
-          QUESTORY
+          POSEQ
         </Text>
 
         <Text style={styles.sub}>
@@ -87,7 +87,7 @@ export default function OnboardingScreen() {
 
         <View style={styles.hero}>
           <Text style={styles.eyebrow}>
-            WELCOME TO QUESTORY
+            WELCOME TO POSEQ
           </Text>
 
           <Text style={styles.title}>
@@ -96,7 +96,7 @@ export default function OnboardingScreen() {
           </Text>
 
           <Text style={styles.description}>
-            Questoryは、あなたの毎日に{'\n'}
+            POSEQは、あなたの毎日に{'\n'}
             小さな冒険をつくるアプリです。
           </Text>
         </View>

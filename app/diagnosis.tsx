@@ -92,7 +92,7 @@ const questions = [
     ],
   },
   {
-    question: 'Questoryに一番してほしいことは？',
+    question: 'POSEQに一番してほしいことは？',
     options: [
       '自分では行かない場所へ連れ出してほしい',
       '日常をもっと特別にしてほしい',
@@ -138,7 +138,7 @@ export default function DiagnosisScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.logo}>QUESTORY</Text>
+        <Text style={styles.logo}>POSEQ</Text>
 
         <Text style={styles.sub}>
           FIND YOUR ADVENTURE

@@ -499,7 +499,7 @@ export default function FollowsScreen() {
           <Text
             style={styles.logo}
           >
-            QUESTORY
+            POSEQ
           </Text>
 
           <Text

@@ -151,7 +151,7 @@ export default function AccountScreen() {
 
           <View style={styles.headerBrand}>
             <Text style={styles.logo}>
-              QUESTORY
+              POSEQ
             </Text>
 
             <Text style={styles.sub}>

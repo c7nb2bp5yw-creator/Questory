@@ -373,7 +373,7 @@ export default function ClearScreen() {
         </Pressable>
 
         <Text style={styles.logo}>
-          QUESTORY
+          POSEQ
         </Text>
 
         <Text style={styles.sub}>

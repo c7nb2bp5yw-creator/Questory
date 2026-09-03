@@ -1034,7 +1034,7 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.logo}>
-              QUESTORY
+              POSEQ
             </Text>
 
             <Text style={styles.sub}>

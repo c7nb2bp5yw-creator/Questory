@@ -1,6 +1,8 @@
+import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
     Pressable,
     SafeAreaView,
     StyleSheet,
@@ -15,17 +17,115 @@ export default function ResetPasswordScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] =
     useState('');
+
   const [saving, setSaving] = useState(false);
+  const [checkingSession, setCheckingSession] =
+    useState(true);
+  const [recoveryReady, setRecoveryReady] =
+    useState(false);
   const [completed, setCompleted] =
     useState(false);
   const [errorMessage, setErrorMessage] =
     useState<string | null>(null);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const prepareRecoverySession = async () => {
+      try {
+        setCheckingSession(true);
+        setErrorMessage(null);
+
+        const url = await Linking.getInitialURL();
+
+        if (url) {
+          const hashIndex = url.indexOf('#');
+          const queryIndex = url.indexOf('?');
+
+          const parameterString =
+            hashIndex >= 0
+              ? url.slice(hashIndex + 1)
+              : queryIndex >= 0
+                ? url.slice(queryIndex + 1)
+                : '';
+
+          const params = new URLSearchParams(
+            parameterString,
+          );
+
+          const accessToken =
+            params.get('access_token');
+          const refreshToken =
+            params.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            const { error } =
+              await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+
+            if (error) {
+              throw error;
+            }
+          }
+        }
+
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        if (!mounted) {
+          return;
+        }
+
+        if (!session) {
+          setRecoveryReady(false);
+          setErrorMessage(
+            '再設定リンクを確認できませんでした。パスワード再設定メールをもう一度送信してください。',
+          );
+          return;
+        }
+
+        setRecoveryReady(true);
+      } catch (error) {
+        console.log(
+          'PASSWORD RECOVERY SESSION ERROR:',
+          error,
+        );
+
+        if (mounted) {
+          setRecoveryReady(false);
+          setErrorMessage(
+            '再設定リンクを確認できませんでした。パスワード再設定メールをもう一度送信してください。',
+          );
+        }
+      } finally {
+        if (mounted) {
+          setCheckingSession(false);
+        }
+      }
+    };
+
+    prepareRecoverySession();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const canSubmit =
+    recoveryReady &&
     password.length >= 6 &&
     confirmPassword.length >= 6 &&
     password === confirmPassword &&
-    !saving;
+    !saving &&
+    !checkingSession;
 
   const handleReset = async () => {
     if (!canSubmit) {
@@ -57,13 +157,32 @@ export default function ResetPasswordScreen() {
     setCompleted(true);
   };
 
+  if (checkingSession) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.content}>
+          <Text style={styles.logo}>POSEQ</Text>
+
+          <Text style={styles.sub}>
+            PASSWORD RESET
+          </Text>
+
+          <View style={styles.loadingArea}>
+            <ActivityIndicator />
+            <Text style={styles.loadingText}>
+              再設定リンクを確認しています...
+            </Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (completed) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
-          <Text style={styles.logo}>
-            POSEQ
-          </Text>
+          <Text style={styles.logo}>POSEQ</Text>
 
           <Text style={styles.sub}>
             PASSWORD RESET
@@ -104,9 +223,7 @@ export default function ResetPasswordScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.logo}>
-          POSEQ
-        </Text>
+        <Text style={styles.logo}>POSEQ</Text>
 
         <Text style={styles.sub}>
           PASSWORD RESET
@@ -135,7 +252,7 @@ export default function ResetPasswordScreen() {
           placeholder="••••••••"
           placeholderTextColor="#4F5B6E"
           secureTextEntry
-          editable={!saving}
+          editable={!saving && recoveryReady}
         />
 
         <Text style={styles.label}>
@@ -149,7 +266,7 @@ export default function ResetPasswordScreen() {
           placeholder="••••••••"
           placeholderTextColor="#4F5B6E"
           secureTextEntry
-          editable={!saving}
+          editable={!saving && recoveryReady}
         />
 
         {confirmPassword.length > 0 &&
@@ -179,6 +296,21 @@ export default function ResetPasswordScreen() {
               : 'SET NEW PASSWORD'}
           </Text>
         </Pressable>
+
+        {!recoveryReady && (
+          <Pressable
+            style={styles.backButton}
+            onPress={() =>
+              router.replace(
+                '/forgot-password' as any,
+              )
+            }
+          >
+            <Text style={styles.backText}>
+              再設定メールをもう一度送る
+            </Text>
+          </Pressable>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -213,6 +345,18 @@ const styles = StyleSheet.create({
 
   hero: {
     marginTop: 65,
+  },
+
+  loadingArea: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  loadingText: {
+    color: '#7B8799',
+    fontSize: 12,
+    marginTop: 16,
   },
 
   completeMark: {
@@ -281,5 +425,16 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1.3,
+  },
+
+  backButton: {
+    alignItems: 'center',
+    paddingVertical: 18,
+  },
+
+  backText: {
+    color: '#8ECAFF',
+    fontSize: 11,
+    fontWeight: '800',
   },
 });

@@ -229,9 +229,41 @@ export default function PostScreen() {
   };
 
   /*
+   * 投稿前の簡易テキストチェック
+   */
+  const containsBlockedContent = (value: string) => {
+    const normalized = value
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/\\s+/g, '');
+
+    const blockedPatterns = [
+      /殺す/,
+      /死ね/,
+      /ころす/,
+      /しね/,
+      /レイプ/,
+      /強姦/,
+      /犯す/,
+    ];
+
+    return blockedPatterns.some((pattern) =>
+      pattern.test(normalized),
+    );
+  };
+
+  /*
    * CLEARする
    */
   const handlePost = async () => {
+    if (containsBlockedContent(caption)) {
+      Alert.alert(
+        '投稿できない内容が含まれています',
+        'キャプションの内容を確認してから、もう一度お試しください。',
+      );
+
+      return;
+    }
     if (!image) {
       Alert.alert(
         '写真を選択してください',

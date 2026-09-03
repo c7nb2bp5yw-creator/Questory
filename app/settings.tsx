@@ -1,11 +1,10 @@
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from 'react-native';
@@ -14,14 +13,6 @@ import { useAuth } from '@/context/auth';
 
 export default function SettingsScreen() {
   const { signOut } = useAuth();
-
-  const [notifications, setNotifications] =
-    useState(true);
-
-  const [
-    questNotifications,
-    setQuestNotifications,
-  ] = useState(true);
 
   const handleBack = () => {
     router.back();
@@ -89,51 +80,6 @@ export default function SettingsScreen() {
         <Text style={styles.title}>
           設定
         </Text>
-
-        {/* NOTIFICATIONS */}
-
-        <Text style={styles.sectionLabel}>
-          NOTIFICATIONS
-        </Text>
-
-        <View style={styles.card}>
-          <View style={styles.row}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowTitle}>
-                通知
-              </Text>
-
-              <Text style={styles.rowDescription}>
-                Questoryからの通知を受け取る
-              </Text>
-            </View>
-
-            <Switch
-              value={notifications}
-              onValueChange={setNotifications}
-            />
-          </View>
-
-          <View style={styles.line} />
-
-          <View style={styles.row}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowTitle}>
-                協力された通知
-              </Text>
-
-              <Text style={styles.rowDescription}>
-                あなたのNEXT QUESTに誰かが協力した時
-              </Text>
-            </View>
-
-            <Switch
-              value={questNotifications}
-              onValueChange={setQuestNotifications}
-              disabled={!notifications}
-            />
-          </View>
-        </View>
 
         {/* ACCOUNT */}
 

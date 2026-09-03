@@ -610,6 +610,9 @@ export default function PostScreen() {
         <Text style={styles.note}>
           投稿したCLEARはプロフィールの
           QUEST HISTORYに表示されます。
+          {'\n'}
+          他人の個人情報や権利を侵害する写真、
+          不適切な内容は投稿しないでください。
         </Text>
 
       </ScrollView>

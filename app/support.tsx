@@ -11,7 +11,7 @@ import {
     View,
 } from 'react-native';
 
-const SUPPORT_EMAIL = '';
+const SUPPORT_EMAIL = 'app.toiawase.sp@gmail.com';
 
 export default function SupportScreen() {
   const handleBack = () => {
